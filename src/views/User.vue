@@ -1,8 +1,8 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElCard, ElTabs, ElTabPane, ElButton, ElTag, ElMessage } from 'element-plus';
-import { fetchUserDetails, fetchUserArticles } from '../api/users'; // 导入 API 函数
+import { ElCard, ElTabs, ElTabPane, ElButton, ElTag, ElMessage, ElMessageBox } from 'element-plus'; // 导入 ElMessageBox
+import { fetchUserDetails, fetchUserArticles, checkMutualFollow, followUserApi, unfollowUserApi } from '../api/users'; // 导入新的 API 函数
 import { useAuthStore } from '../store/authStore'; // 导入 Auth Store
 import dayjs from 'dayjs'; // 导入 dayjs 用于日期格式化
 
@@ -15,6 +15,8 @@ const articles = ref([]); // 存储用户文章列表
 const activeTab = ref('article');
 const isLoading = ref(true);
 const error = ref(null);
+const followStatus = ref(0); // 0: 未知/未关注, 1: 互相关注, 2: A关注B, 3: B关注A
+const isProcessingFollow = ref(false); // 防止重复点击
 
 // 获取当前登录用户的ID
 const currentUserId = computed(() => authStore.user.ID);
@@ -24,14 +26,29 @@ const viewedUserId = computed(() => parseInt(route.params.id));
 // 判断当前查看的是否是登录用户自己的页面
 const isOwnProfile = computed(() => currentUserId.value === viewedUserId.value);
 
+// 根据 followStatus 计算关注按钮文本
+const followButtonText = computed(() => {
+  if (isOwnProfile.value) return '编辑资料'; // 自己的主页显示编辑资料
+  switch (followStatus.value) {
+    case 1: // 互相关注
+    case 2: // A关注B (当前用户关注了对方)
+      return '已关注';
+    case 3: // B关注A (对方关注了你，但你没关注)
+    case 0: // 无关注关系
+    default:
+      return '关注';
+  }
+});
+
+// 根据 followStatus 计算是否已关注对方
+const isFollowing = computed(() => followStatus.value === 1 || followStatus.value === 2);
+
 onMounted(async () => {
   const userId = route.params.id;
   if (!userId) {
     error.value = '未找到用户 ID。';
     isLoading.value = false;
     ElMessage.error('无法加载用户信息，缺少用户ID');
-    // 可以选择重定向到首页或错误页
-    // router.push('/');
     return;
   }
 
@@ -39,35 +56,45 @@ onMounted(async () => {
     isLoading.value = true;
     error.value = null;
     // 并行获取用户详情和文章列表
-    const [userDetailsResponse, userArticlesResponse] = await Promise.all([
+    const fetchPromises = [
       fetchUserDetails(userId),
       fetchUserArticles(userId)
-    ]);
+    ];
+
+    // 如果不是自己的主页，并且已登录，则检查关注状态
+    if (!isOwnProfile.value && currentUserId.value) {
+      fetchPromises.push(checkMutualFollow(currentUserId.value, viewedUserId.value));
+    }
+
+    const [userDetailsResponse, userArticlesResponse, mutualFollowStatus] = await Promise.all(fetchPromises);
 
     // 处理用户详情
     if (userDetailsResponse) {
       user.value = userDetailsResponse;
-      // 可以在这里格式化加入日期等
       if (user.value.CreatedAt) {
         user.value.joinDate = dayjs(user.value.CreatedAt).format('YYYY-MM-DD');
       }
     } else {
-      throw new Error(userDetailsResponse.message || '获取用户信息失败');
+      throw new Error('获取用户信息失败');
     }
 
     // 处理文章列表
-    // 注意：fetchUserArticles 已经处理了 code === 0 的情况，直接返回 data
     articles.value = userArticlesResponse.map(article => ({
       id: article.ID,
       title: article.Title,
-      // 格式化文章元数据，例如发布时间和阅读数
       meta: `${dayjs(article.CreatedAt).format('YYYY-MM-DD')} · ${article.ViewCount || 0}阅读 · ${article.LikeCount || 0}赞`,
       desc: article.Description || '暂无描述'
     }));
 
+    // 处理关注状态 (仅当请求发送并返回时)
+    if (mutualFollowStatus !== undefined) {
+      followStatus.value = mutualFollowStatus.code;
+      console.log('关注状态:', mutualFollowStatus);
+    }
+
   } catch (err) {
-    console.error('Failed to fetch user data:', err);
-    error.value = err.message || '加载用户信息或文章失败，请稍后再试。';
+    console.error('Failed to fetch user data or follow status:', err);
+    error.value = err.message || '加载用户信息、文章或关注状态失败，请稍后再试。';
     ElMessage.error(error.value);
   } finally {
     isLoading.value = false;
@@ -79,9 +106,8 @@ function goToArticle(id) {
 }
 
 function goToSettings() {
-  // 只有是自己的主页时才能跳转到设置
   if (isOwnProfile.value) {
-    router.push('/settings'); // 假设设置页路由为 /settings
+    router.push('/settings');
   } else {
     ElMessage.warning('无法访问他人的设置页面');
   }
@@ -96,20 +122,73 @@ function goToChat() {
     ElMessage.info('不能给自己发送私信');
     return;
   }
-  // 跳转到聊天页面，需要目标用户的ID
-  router.push(`/chat/${viewedUserId.value}`);
+
+  // 新增：检查互关状态
+  if (followStatus.value !== 1) { // 1 代表互相关注
+    ElMessage.warning('双方互相关注后才能发送私信。');
+    return;
+  }
+
+  // 只有互相关注才能跳转
+  router.push(`/chat?userId=${viewedUserId.value}`); // 修改路由传递方式，使用 query 参数
 }
 
-// 添加关注/取消关注功能 (示例，需要后端API支持)
-function followUser() {
+// 处理关注/取消关注操作
+async function handleFollowAction() {
+  if (isProcessingFollow.value) return; // 防止重复提交
   if (!currentUserId.value) {
     ElMessage.warning('请先登录');
     return;
   }
-  // 调用关注API...
-  console.log(`Follow user ${viewedUserId.value}`);
-  ElMessage.success('关注成功 (模拟)');
-  // 可能需要更新 user.value 中的关注状态和关注者数量
+  if (isOwnProfile.value) {
+    // 如果是自己的主页，按钮功能是编辑资料
+    goToSettings();
+    return;
+  }
+
+  isProcessingFollow.value = true;
+  try {
+    if (isFollowing.value) {
+      // --- 取消关注 ---
+      await ElMessageBox.confirm('确定要取消关注该用户吗？', '取消关注', {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      });
+      // 用户确认取消
+      const response = await unfollowUserApi(currentUserId.value, viewedUserId.value);
+      if (response.code === 0) { // 假设后端成功返回 code 0
+        ElMessage.success('已取消关注');
+        // 更新关注状态，需要重新检查或根据后端逻辑推断
+        // 简单处理：认为取消后变为“无关注”或“B关注A”
+        followStatus.value = followStatus.value === 1 ? 3 : 0;
+        // 如果有关注者数量，也需要更新 user.value.followerCount--
+      } else {
+        ElMessage.error(response.message || '取消关注失败');
+      }
+    } else {
+      // --- 关注 ---
+      const response = await followUserApi(currentUserId.value, viewedUserId.value);
+      if (response.code == 200) { // 假设后端成功返回 code 0
+        ElMessage.success('关注成功');
+        // 更新关注状态，需要重新检查或根据后端逻辑推断
+        // 简单处理：认为关注后变为“A关注B”或“互相关注”
+        followStatus.value = followStatus.value === 3 ? 1 : 2;
+        // 如果有关注者数量，也需要更新 user.value.followerCount++
+      } else {
+        ElMessage.error(response.message || '关注失败');
+      }
+    }
+  } catch (error) {
+    // ElMessageBox 的取消操作会抛出 'cancel' 字符串，需要捕获但不提示错误
+    if (error !== 'cancel') {
+        console.error('Follow/Unfollow action failed:', error);
+        const errorMsg = error?.message || (isFollowing.value ? '取消关注失败' : '关注失败');
+        ElMessage.error(errorMsg);
+    }
+  } finally {
+    isProcessingFollow.value = false;
+  }
 }
 
 </script>
@@ -122,18 +201,25 @@ function followUser() {
       <div class="user-main">
         <el-card class="user-info-card">
           <div class="user-info-top">
-            <!-- 使用动态头像 -->
             <img class="avatar" :src="user.AvatarURL || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'" alt="avatar" />
             <div class="user-basic">
-              <!-- 使用动态用户名和认证状态 (如果后端提供) -->
               <div class="user-name">{{ user.Username }} <el-tag v-if="user.isVerified" size="small" type="info">认证</el-tag></div>
-              <!-- 使用动态描述 -->
               <div class="user-desc">{{ user.PersonalIntroduction || '暂无个人简介' }}</div>
               <div class="user-links">
                 <!-- 根据是否是自己的主页显示不同按钮 -->
-                <el-button v-if="!isOwnProfile" size="small" type="primary" @click="followUser">关注</el-button>
+                <!-- 修改按钮点击事件为 handleFollowAction -->
+                <el-button
+                  v-if="!isOwnProfile"
+                  size="small"
+                  :type="isFollowing ? 'default' : 'primary'" 
+                  :plain="isFollowing" 
+                  @click="handleFollowAction"
+                  :loading="isProcessingFollow"
+                >
+                  {{ followButtonText }}
+                </el-button>
                 <el-button v-if="!isOwnProfile" size="small" @click="goToChat">私信</el-button>
-                <el-button v-if="isOwnProfile" size="small" @click="goToSettings">编辑资料</el-button> <!-- 修改为编辑资料 -->
+                <el-button v-if="isOwnProfile" size="small" @click="goToSettings">编辑资料</el-button>
               </div>
             </div>
           </div>
@@ -146,13 +232,13 @@ function followUser() {
           <div class="user-follow">
             <div class="follow-item">
               <!-- 动态关注数 -->
-              <div class="follow-num">{{ user.followingCount || 0 }}</div>
+              <div class="follow-num">{{ user.NumberOfFans || 0 }}</div>
               <div class="follow-label">关注了</div>
             </div>
             <div class="follow-item">
               <!-- 动态关注者数 -->
-              <div class="follow-num">{{ user.followerCount || 0 }}</div>
-              <div class="follow-label">关注者</div>
+              <div class="follow-num">{{ user.NumberOfFollow || 0 }}</div>
+              <div class="follow-label">粉丝数</div>
             </div>
           </div>
         </el-card>

@@ -11,7 +11,7 @@
           clearable
         />
       </div>
-      <el-scrollbar class="contact-list">
+      <el-scrollbar class="contact-list" v-loading="isLoadingContacts">
         <div
           v-for="conv in filteredConversations"
           :key="conv.id"
@@ -28,35 +28,41 @@
             <div class="contact-last-msg">{{ conv.lastMessage }}</div>
           </div>
         </div>
-        <el-empty v-if="filteredConversations.length === 0" description="暂无联系人" :image-size="60"></el-empty>
+        <el-empty v-if="!isLoadingContacts && filteredConversations.length === 0" description="暂无关注的人" :image-size="60"></el-empty>
       </el-scrollbar>
     </el-aside>
 
     <!-- 右侧聊天区域 -->
-    <el-container class="chat-area" v-if="activeConversation">
+    <el-container class="chat-area" v-if="activeConversationId">
       <el-header class="chat-header" height="60px">
-        <span class="chat-title">{{ activeConversation.name }}</span>
+        <span class="chat-title">{{ activeConversation?.name || '聊天' }}</span>
         <el-dropdown>
           <el-icon class="el-dropdown-link" :size="20"><MoreFilled /></el-icon>
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item>查看资料</el-dropdown-item>
               <el-dropdown-item>清空聊天记录</el-dropdown-item>
-              <el-dropdown-item divided>删除好友</el-dropdown-item>
+              <el-dropdown-item divided>取消关注</el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
       </el-header>
-      <el-main class="chat-panel">
+      <el-main class="chat-panel" v-loading="isLoadingMessages">
+        <!-- 未互关提示 -->
+        <div v-if="!isLoadingMessages && !isMutuallyFollowing && activeConversationId" class="not-mutual-follow-overlay">
+          <span>互相关注后才能开始聊天</span>
+        </div>
         <el-scrollbar ref="chatScrollbarRef" class="chat-content-scrollbar">
           <div ref="chatContentRef" class="chat-content">
-            <div v-for="(msg, idx) in messages" :key="idx" :class="['chat-msg', msg.sender === 'me' ? 'user' : 'other']">
-              <el-avatar :size="36" :src="msg.sender === 'me' ? currentUser.avatar : activeConversation.avatar" class="avatar" />
+            <!-- 消息列表 -->
+            <div v-for="msg in messages" :key="msg.id" :class="['chat-msg', msg.sender === 'me' ? 'user' : 'other']">
+              <el-avatar :size="36" :src="msg.avatar" class="avatar" />
               <div class="msg-bubble">
                  <span class="msg-text">{{ msg.text }}</span>
-                 <span class="msg-time">{{ msg.time }}</span>
+                 <!-- <span class="msg-time">{{ msg.time }}</span> --> <!-- 时间暂时不在气泡内显示 -->
               </div>
             </div>
+            <el-empty v-if="!isLoadingMessages && isMutuallyFollowing && messages.length === 0" description="暂无消息，开始聊天吧" :image-size="80"></el-empty>
           </div>
         </el-scrollbar>
       </el-main>
@@ -80,8 +86,9 @@
                size="large"
                type="textarea"
                :autosize="{ minRows: 1, maxRows: 4 }"
+               :disabled="!isMutuallyFollowing" 
              />
-             <el-button type="primary" @click="sendMessage" size="large" :disabled="!newMessage.trim()">发送</el-button>
+             <el-button type="primary" @click="sendMessage" size="large" :disabled="!newMessage.trim() || !isMutuallyFollowing">发送</el-button>
            </div>
          </el-footer>
     </el-container>
@@ -92,23 +99,35 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onMounted, watch } from 'vue';
-import { ElContainer, ElAside, ElMain, ElHeader, ElFooter, ElInput, ElButton, ElScrollbar, ElAvatar, ElIcon, ElDropdown, ElDropdownMenu, ElDropdownItem, ElEmpty, ElTooltip } from 'element-plus';
+import { ref, computed, nextTick, onMounted, watch, onUnmounted } from 'vue'; // 添加 onUnmounted
+import { useRoute } from 'vue-router';
+import { ElContainer, ElAside, ElMain, ElHeader, ElFooter, ElInput, ElButton, ElScrollbar, ElAvatar, ElIcon, ElDropdown, ElDropdownMenu, ElDropdownItem, ElEmpty, ElTooltip, ElMessage } from 'element-plus';
 import { Search, MoreFilled, MostlyCloudy, PictureFilled } from '@element-plus/icons-vue';
+import { useAuthStore } from '../store/authStore';
+import { fetchFollowingList, fetchUserDetails, checkMutualFollow, fetchMessages, sendMessageApi } from '../api/users';
 
-// 模拟当前用户信息
-const currentUser = ref({
-  id: 'user_me',
-  name: '我',
-  avatar: 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png' // 示例头像
-});
+const route = useRoute();
+const authStore = useAuthStore();
+const currentUserId = computed(() => authStore.user?.ID);
 
-// 模拟联系人/会话列表数据
-const conversations = ref([
+// 当前用户信息 (从 store 获取)
+const currentUser = computed(() => ({
+  id: currentUserId.value,
+  name: authStore.user?.Username || '我',
+  avatar: authStore.user?.AvatarURL || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+}));
+
+// 联系人/会话列表数据 (将从 API 获取)
+const conversations = ref([]);
+const isLoadingContacts = ref(false);
+
+// 模拟联系人/会话列表数据 (保留原始结构作为参考，后续替换)
+/*
+const conversations_mock = ref([
   {
     id: 1,
     name: '言志志',
-    avatar: 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png', // 示例头像
+    avatar: 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png',
     lastMessage: '你好',
     time: '20:40',
     messages: [
@@ -119,21 +138,25 @@ const conversations = ref([
   {
     id: 2,
     name: '技术交流群',
-    avatar: 'https://cube.elemecdn.com/9/c2/f0ee8a3c7c9638a54940382568c9dpng.png', // 示例群头像
+    avatar: 'https://cube.elemecdn.com/9/c2/f0ee8a3c7c9638a54940382568c9dpng.png',
     lastMessage: '今晚有分享吗？',
     time: '昨天',
     messages: [
        { sender: 'other', text: '今晚有分享吗？', time: '昨天 18:30' }
     ]
   },
-  // ...更多会话
 ]);
+*/
 
 const searchQuery = ref('');
-const activeConversationId = ref(null); // 当前选中的会话ID
+const activeConversationId = ref(null); // 当前选中的会话用户ID
 const newMessage = ref('');
 const chatScrollbarRef = ref(null);
 const chatContentRef = ref(null);
+const messages = ref([]); // 当前激活会话的消息列表 (将从 API 获取)
+const isLoadingMessages = ref(false);
+const isMutuallyFollowing = ref(false); // 是否互相关注
+const messagePollingInterval = ref(null); // 定时器 ID
 
 // 计算属性：根据搜索过滤联系人
 const filteredConversations = computed(() => {
@@ -145,45 +168,277 @@ const filteredConversations = computed(() => {
   );
 });
 
-// 计算属性：获取当前激活的会话对象
+// 计算属性：获取当前激活的会话对象 (用户信息)
 const activeConversation = computed(() => {
   return conversations.value.find(conv => conv.id === activeConversationId.value);
 });
 
-// 计算属性：获取当前激活会话的消息列表
-const messages = computed(() => {
-  return activeConversation.value ? activeConversation.value.messages : [];
-});
+// 方法：加载关注列表
+const loadFollowingList = async () => {
+  if (!currentUserId.value) {
+    console.error('无法加载关注列表，用户未登录');
+    // ElMessage.error('请先登录'); // 可以在这里提示，但通常入口会控制
+    return;
+  }
+  isLoadingContacts.value = true;
+  try {
+    const followingResponse = await fetchFollowingList(currentUserId.value);
+    if (followingResponse && followingResponse.data && followingResponse.data.list) {
+      const followingIds = followingResponse.data.list.map(item => item.id);
+
+      // 获取每个关注用户的详细信息 (并行请求)
+      const userDetailPromises = followingIds.map(id => fetchUserDetails(id));
+      const userDetailsResponses = await Promise.all(userDetailPromises);
+
+      conversations.value = userDetailsResponses
+        .filter(user => user) // 过滤掉获取失败的用户
+        .map(user => ({
+          id: user.ID,
+          name: user.Username,
+          avatar: user.AvatarURL || 'https://cube.elemecdn.com/3/7c/3ea6beec64369c2642b92c6726f1epng.png', // 默认头像
+          lastMessage: '', // 初始为空，后续可考虑获取最后消息
+          time: '', // 初始为空
+          // messages: [] // 不在这里存储所有消息，按需加载
+        }));
+
+      // 检查是否有从 User 页面传递过来的 userId
+      const targetUserId = route.query.userId ? parseInt(route.query.userId) : null;
+      if (targetUserId && conversations.value.some(c => c.id === targetUserId)) {
+          // 如果 URL 参数指定的用户在关注列表中，则自动选中
+          selectConversation(targetUserId);
+      } else if (conversations.value.length > 0 && !activeConversationId.value) {
+          // 否则，如果列表不为空且没有选中项，默认选中第一个 (可选)
+          // selectConversation(conversations.value[0].id);
+      }
+
+    } else {
+      console.warn('获取关注列表响应格式不正确或为空:', followingResponse);
+      conversations.value = [];
+    }
+  } catch (error) {
+    console.error('加载关注列表失败:', error);
+    ElMessage.error('加载联系人列表失败，请稍后重试');
+    conversations.value = [];
+  } finally {
+    isLoadingContacts.value = false;
+  }
+};
 
 // 方法：选择会话
-const selectConversation = (id) => {
+const selectConversation = async (id) => {
+  if (!currentUserId.value) {
+      ElMessage.warning('请先登录');
+      return;
+  }
+
+  // 清除之前的定时器
+  if (messagePollingInterval.value) {
+    clearInterval(messagePollingInterval.value);
+    messagePollingInterval.value = null;
+  }
+
   activeConversationId.value = id;
-  scrollToBottom(); // 切换会话后滚动到底部
+  messages.value = []; // 清空旧消息
+  isMutuallyFollowing.value = false; // 重置互关状态
+  isLoadingMessages.value = true;
+
+  try {
+    // 1. 检查互关状态
+    const mutualFollowRes = await checkMutualFollow(currentUserId.value, id);
+    if (mutualFollowRes && mutualFollowRes.code === 1) { // 假设 code 1 表示互相关注
+      isMutuallyFollowing.value = true;
+
+      // 2. 如果互相关注，加载聊天记录
+      const messagesRes = await fetchMessages(currentUserId.value, id);
+      if (messagesRes && messagesRes.data && messagesRes.data.list) {
+        // 格式化消息数据以匹配模板
+        const fetchedMessages = messagesRes.data.list.map(msg => ({
+          id: msg.ID,
+          sender: msg.SenderID === currentUserId.value ? 'me' : 'other',
+          text: msg.Content,
+          time: new Date(msg.SentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), // 格式化时间
+          avatar: msg.SenderID === currentUserId.value ? currentUser.value.avatar : activeConversation.value?.avatar
+        })).reverse(); // API 返回的是最新的在前面，需要反转
+
+        // 仅在消息列表实际更新时才赋值和滚动
+        if (JSON.stringify(messages.value) !== JSON.stringify(fetchedMessages)) {
+            messages.value = fetchedMessages;
+            scrollToBottom();
+        }
+
+        // 启动轮询
+        if (!messagePollingInterval.value) {
+            messagePollingInterval.value = setInterval(pollMessages, 3000);
+        }
+
+      } else {
+        console.warn('获取消息列表响应格式不正确或为空:', messagesRes);
+        messages.value = []; // 清空以防显示旧数据
+      }
+    } else {
+      // 未互相关注
+      ElMessage.info('双方互相关注后才能查看消息和发送私信。');
+      messages.value = []; // 清空消息
+      // 未互关也需要清除定时器（如果之前启动过）
+      if (messagePollingInterval.value) {
+        clearInterval(messagePollingInterval.value);
+        messagePollingInterval.value = null;
+      }
+    }
+  } catch (error) {
+    console.error(`加载与用户 ${id} 的聊天信息失败:`, error);
+    ElMessage.error('加载聊天信息失败，请稍后重试');
+    messages.value = []; // 清空消息
+    // 出错时也清除定时器
+    if (messagePollingInterval.value) {
+        clearInterval(messagePollingInterval.value);
+        messagePollingInterval.value = null;
+    }
+  } finally {
+    isLoadingMessages.value = false;
+  }
+};
+
+// 新增：轮询获取新消息
+const pollMessages = async () => {
+    if (!activeConversationId.value || !isMutuallyFollowing.value || !currentUserId.value) {
+        // 如果没有选中会话或非互关，停止轮询
+        if (messagePollingInterval.value) {
+            clearInterval(messagePollingInterval.value);
+            messagePollingInterval.value = null;
+        }
+        return;
+    }
+
+    try {
+        const messagesRes = await fetchMessages(currentUserId.value, activeConversationId.value);
+        if (messagesRes && messagesRes.data && messagesRes.data.list) {
+            const fetchedMessages = messagesRes.data.list.map(msg => ({
+                id: msg.ID,
+                sender: msg.SenderID === currentUserId.value ? 'me' : 'other',
+                text: msg.Content,
+                time: new Date(msg.SentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                avatar: msg.SenderID === currentUserId.value ? currentUser.value.avatar : activeConversation.value?.avatar
+            })).reverse();
+
+            // 比较消息列表是否有变化，避免不必要的更新和滚动
+            if (JSON.stringify(messages.value) !== JSON.stringify(fetchedMessages)) {
+                const scrollbar = chatScrollbarRef.value;
+                const isAtBottom = !scrollbar || !scrollbar.wrapRef || (scrollbar.wrapRef.scrollHeight - scrollbar.wrapRef.scrollTop - scrollbar.wrapRef.clientHeight < 1);
+
+                messages.value = fetchedMessages;
+
+                // 只有当滚动条在底部时才自动滚动
+                if (isAtBottom) {
+                    scrollToBottom();
+                }
+            }
+        } else {
+            // 获取失败或无消息，可以考虑是否停止轮询或打印日志
+            console.warn('轮询消息失败或无新消息:', messagesRes);
+        }
+    } catch (error) {
+        console.error('轮询消息 API 请求失败:', error);
+        // 发生错误时停止轮询，避免连续失败
+        if (messagePollingInterval.value) {
+            clearInterval(messagePollingInterval.value);
+            messagePollingInterval.value = null;
+        }
+        // 可以选择性地提示用户
+        // ElMessage.error('自动刷新消息失败');
+    }
 };
 
 // 方法：发送消息
-const sendMessage = () => {
+const sendMessage = async () => {
   const text = newMessage.value.trim();
-  if (!text || !activeConversation.value) return;
+  if (!text || !activeConversationId.value || !currentUserId.value) return;
+
+  // 发送前再次确认是否互相关注 (可选，但更安全)
+  if (!isMutuallyFollowing.value) {
+      ElMessage.warning('双方互相关注后才能发送私信。');
+      return;
+  }
+
+  const receiverId = activeConversationId.value;
+  const receiverName = activeConversation.value?.name; // 获取接收者名字
+  const senderId = currentUserId.value;
+  const senderName = currentUser.value.name; // 获取发送者名字
+
+  if (!receiverName) {
+      ElMessage.error('无法获取接收者信息');
+      return;
+  }
 
   const now = new Date();
-  const timeString = `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+  const timeString = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-  const msg = {
+  // 构造临时消息用于立即显示
+  const tempMsg = {
+    id: Date.now(), // 临时 ID
     sender: 'me',
     text: text,
-    time: timeString
+    time: timeString,
+    avatar: currentUser.value.avatar
   };
-
-  // 实际应用中，这里应该调用API发送消息
-  // 模拟添加到当前会话的消息列表
-  activeConversation.value.messages.push(msg);
-  // 更新会话的最后消息和时间 (模拟)
-  activeConversation.value.lastMessage = text;
-  activeConversation.value.time = timeString;
-
+  messages.value.push(tempMsg);
   newMessage.value = ''; // 清空输入框
   scrollToBottom(); // 发送消息后滚动到底部
+
+  try {
+    // 调用 API 发送消息
+    const response = await sendMessageApi({
+      sender_id: senderId,
+      sender_name: senderName,
+      receiver_id: receiverId,
+      receiver_name: receiverName,
+      content: text
+      // message_type 不再需要，根据新接口调整
+    });
+
+    // 注意：后端接口返回的 code 可能不是 200，需要根据实际情况调整
+    // 假设后端成功返回 code 为 1 或其他表示成功的状态码
+    if (response && response.code === 200) { // 根据实际后端成功 code 调整
+      console.log('消息发送成功:', response.data);
+      // 可选：用后端返回的实际消息替换临时消息，如果需要准确的 ID 和时间戳
+      // const sentMsg = response.data;
+      // const index = messages.value.findIndex(m => m.id === tempMsg.id);
+      // if (index !== -1) {
+      //   messages.value.splice(index, 1, {
+      //     id: sentMsg.ID,
+      //     sender: 'me',
+      //     text: sentMsg.Content,
+      //     time: new Date(sentMsg.SentAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      //     avatar: currentUser.value.avatar
+      //   });
+      // }
+      // 更新会话的最后消息和时间 (如果需要实时更新左侧列表)
+      const convIndex = conversations.value.findIndex(c => c.id === receiverId);
+      if (convIndex !== -1) {
+          conversations.value[convIndex].lastMessage = text;
+          conversations.value[convIndex].time = timeString;
+          // 将此会话移到顶部 (可选)
+          const currentConv = conversations.value.splice(convIndex, 1)[0];
+          conversations.value.unshift(currentConv);
+      }
+    } else {
+      console.error('消息发送失败:', response);
+      ElMessage.error(response?.message || '消息发送失败');
+      // 移除发送失败的临时消息
+      const index = messages.value.findIndex(m => m.id === tempMsg.id);
+      if (index !== -1) {
+        messages.value.splice(index, 1);
+      }
+    }
+  } catch (error) {
+    console.error('发送消息 API 请求失败:', error);
+    ElMessage.error('消息发送失败，请检查网络连接');
+    // 移除发送失败的临时消息
+    const index = messages.value.findIndex(m => m.id === tempMsg.id);
+    if (index !== -1) {
+      messages.value.splice(index, 1);
+    }
+  }
 };
 
 // 方法：滚动聊天记录到底部
@@ -191,23 +446,35 @@ const scrollToBottom = () => {
   nextTick(() => {
     const scrollbar = chatScrollbarRef.value;
     if (scrollbar && scrollbar.wrapRef) {
-      scrollbar.wrapRef.scrollTop = scrollbar.wrapRef.scrollHeight;
+      // 使用 scrollbar.setScrollTop 平滑滚动
+      scrollbar.setScrollTop(scrollbar.wrapRef.scrollHeight);
     }
   });
 };
 
-// 监听消息变化，自动滚动
-watch(messages, () => {
-  scrollToBottom();
-}, { deep: true });
+// 监听消息变化，自动滚动 (修改为仅在用户发送消息时强制滚动)
+// watch(messages, () => {
+//   scrollToBottom();
+// }, { deep: true });
 
-// 组件挂载后，默认选中第一个会话（如果存在）
+// 组件挂载后加载关注列表
 onMounted(() => {
-  if (conversations.value.length > 0) {
-    // selectConversation(conversations.value[0].id);
-  } else {
-      // 如果没有会话，可以显示提示或加载数据
+  loadFollowingList();
+});
+
+// 组件卸载时清除定时器
+onUnmounted(() => {
+  if (messagePollingInterval.value) {
+    clearInterval(messagePollingInterval.value);
   }
+});
+
+// 监听 activeConversationId 变化，如果变为 null，清除定时器
+watch(activeConversationId, (newId) => {
+    if (!newId && messagePollingInterval.value) {
+        clearInterval(messagePollingInterval.value);
+        messagePollingInterval.value = null;
+    }
 });
 
 </script>
@@ -342,6 +609,7 @@ onMounted(() => {
   padding: 0; /* 移除内边距，让滚动条控制 */
   flex: 1;
   overflow: hidden;
+  position: relative; /* 为提示信息定位 */
 }
 
 .chat-content-scrollbar {
@@ -350,6 +618,22 @@ onMounted(() => {
 
 .chat-content {
   padding: 20px;
+}
+
+/* 未互关提示 */
+.not-mutual-follow-overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: rgba(247, 248, 250, 0.8); /* 半透明背景 */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 10; /* 确保在消息之上 */
+    color: #86909c;
+    font-size: 14px;
 }
 
 .chat-msg {
