@@ -16,6 +16,8 @@ import Register from '../views/Register.vue'
 import Courses from '../views/Courses.vue'
 import Practice from '../views/Practice.vue'
 import Chat from '../views/Chat.vue'
+import SqlLevels from '../views/SqlLevels.vue'; // 导入 SQL 关卡选择页面
+import SqlPractice from '../views/SqlPractice.vue'; // 导入 SQL 刷题页面
 
 
 const routes = [
@@ -33,6 +35,8 @@ const routes = [
   { path: '/editor/:id', component: Editor }, // 编辑器    
   { path: '/courses', component: Courses }, // 课程
   { path: '/practice', component: Practice }, // 练习
+  { path: '/practice/sql', component: SqlLevels }, // SQL 关卡选择页面
+  { path: '/sql-practice/:levelKey', component: SqlPractice, props: true }, // SQL 刷题页面
   { path: '/settings', component: UserSettings }, // 设置
   { path: '/chat', component: Chat },
   { path: '/chat/:userId', component: Chat },
