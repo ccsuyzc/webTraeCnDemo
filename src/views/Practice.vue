@@ -1,7 +1,7 @@
 <template>
   <div class="practice-page">
-    <h1>在线刷题</h1>
-    <p>选择一个模块开始学习和练习。</p>
+    <!-- <h1>在线刷题</h1> -->
+    <!-- <p>选择一个模块开始学习和练习。</p> -->
     <el-row :gutter="20" class="module-list">
       <el-col
         v-for="module in learningModules"
@@ -69,6 +69,7 @@ const navigateTo = (route) => {
 .practice-page {
   padding: 30px;
   text-align: center;
+  margin: 60px;
   background-color: #f4f7f6; /* 淡雅的背景色 */
 }
 

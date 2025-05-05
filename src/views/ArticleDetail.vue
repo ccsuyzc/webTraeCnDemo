@@ -4,10 +4,22 @@
     <div class="left-bar">
       <el-card class="action-card">
         <!-- Add v-if condition here -->
-        <el-button v-if="article.authorId === currentUserId" type="primary"  class="action-btn edit-btn" @click="editArticle">编辑</el-button>
-        <el-button  class="action-btn">收藏</el-button>
-        <el-button class="action-btn le">分享</el-button>
-        <el-button  class="action-btn le">举报</el-button>
+        <el-button v-if="currentUserId && article.authorId === currentUserId" type="primary" class="action-btn edit-btn" @click="editArticle">编辑</el-button>
+        <el-button class="action-btn">收藏</el-button>
+        <!-- Share Button with Dropdown -->
+        <el-dropdown @command="handleShareCommand" class="action-btn le share-dropdown">
+          <el-button class="action-btn share-btn-inner">
+            分享<el-icon class="el-icon--right"><arrow-down /></el-icon>
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="copyLink">复制链接</el-dropdown-item>
+              <el-dropdown-item command="generateQRCode">生成二维码</el-dropdown-item>
+              <!-- <el-dropdown-item command="downloadQRCodeBackend">后端生成二维码</el-dropdown-item> -->
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button class="action-btn le">举报</el-button>
       </el-card>
     </div>
     <!-- 中间文章内容 -->
@@ -99,14 +111,31 @@
       </el-card>
     </div>
   </div>
+
+  <!-- QR Code Dialog -->
+  <el-dialog v-model="qrCodeDialogVisible" title="分享文章二维码" width="300px" center>
+    <div ref="qrCodeContainer" style="text-align: center; padding: 20px;">
+      <qrcode-vue :value="qrCodeValue" :size="200" level="H" />
+      <p style="margin-top: 10px; font-size: 14px; color: #666;">扫码分享给朋友</p>
+    </div>
+    <template #footer>
+      <span class="dialog-footer">
+        <el-button @click="qrCodeDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="downloadQRCode">下载二维码</el-button>
+      </span>
+    </template>
+  </el-dialog>
 </template>
 
 <script setup>
 import dayjs from 'dayjs';
-import { ref, onMounted } from 'vue'
-import { useRoute, useRouter } from 'vue-router' // Import useRouter
-// 导入 Element Plus 组件 (如果需要显式导入)
-// import { ElInput, ElButton, ElCard, ElAvatar, ElMessage } from 'element-plus'
+import { ref, onMounted, computed } from 'vue'; // Add computed
+import { useRoute, useRouter } from 'vue-router'; // Import useRouter
+// 导入 Element Plus 组件
+import { ElDropdown, ElDropdownMenu, ElDropdownItem, ElDialog, ElMessage, ElIcon } from 'element-plus';
+import { ArrowDown } from '@element-plus/icons-vue'; // Import icon
+import QrcodeVue from 'qrcode.vue'; // Import QR Code component
+import html2canvas from 'html2canvas'; // Import html2canvas
 import { fetchArticleDetailById, fetchArticleComments, postComment } from '../api/articles'; // 导入 API 函数
 import { useAuthStore } from '../store/authStore'; // 导入 Auth Store
 
@@ -152,6 +181,11 @@ const replyingToUsername = ref(''); // Username of the author being replied to
 const replyContent = ref(''); // Content of the reply
 const replyingToUserId = ref(null); // ID of the user being replied to
 
+// Share related state
+const qrCodeDialogVisible = ref(false);
+const qrCodeValue = ref('');
+const qrCodeContainer = ref(null); // Ref for the QR code container element
+
 // Function to initiate replying to a comment
 const startReply = (comment) => {
   replyingTo.value = comment.id;
@@ -168,7 +202,7 @@ const cancelReply = () => {
   replyContent.value = '';
 };
 
-// 模拟获取评论数据的函数
+// 获取评论数据的函数
 const fetchComments = async (articleId) => {
   console.log(`Fetching comments for article ${articleId}...`);
   try {
@@ -191,6 +225,89 @@ const fetchComments = async (articleId) => {
     // ElMessage.error('加载评论失败'); // 可以添加 Element Plus 提示
   }
 };
+
+// --- Share Functionality ---
+
+// Get current article URL
+const currentArticleUrl = computed(() => window.location.href);
+
+// Handle share dropdown commands
+const handleShareCommand = (command) => {
+  switch (command) {
+    case 'copyLink':
+      copyLink();
+      break;
+    case 'generateQRCode':
+      showQRCodeDialog();
+      break;
+    // case 'downloadQRCodeBackend':
+    //   downloadQRCodeFromBackend(); // Placeholder for backend call
+    //   break;
+    default:
+      console.warn('Unknown share command:', command);
+  }
+};
+
+// Copy link to clipboard
+const copyLink = async () => {
+  try {
+    await navigator.clipboard.writeText(currentArticleUrl.value);
+    ElMessage.success('链接已复制到剪贴板');
+  } catch (err) {
+    console.error('Failed to copy link: ', err);
+    ElMessage.error('复制链接失败');
+  }
+};
+
+// Show QR code dialog
+const showQRCodeDialog = () => {
+  qrCodeValue.value = currentArticleUrl.value;
+  qrCodeDialogVisible.value = true;
+};
+
+// Download QR code using html2canvas
+const downloadQRCode = () => {
+  if (!qrCodeContainer.value) {
+    ElMessage.error('无法找到二维码元素');
+    return;
+  }
+  html2canvas(qrCodeContainer.value, {
+    useCORS: true, // Important if the QR code lib generates external resources or if you have images
+    scale: 2, // Increase scale for better resolution
+  }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = `article-${article.value.id || 'qrcode'}.png`;
+    link.href = canvas.toDataURL('image/png');
+    link.click();
+    qrCodeDialogVisible.value = false; // Close dialog after download
+    ElMessage.success('二维码已开始下载');
+  }).catch(err => {
+    console.error('Failed to download QR code:', err);
+    ElMessage.error('下载二维码失败');
+  });
+};
+
+// Placeholder for backend QR code generation
+// const downloadQRCodeFromBackend = async () => {
+//   try {
+//     // Replace with your actual API call
+//     // const response = await fetch(`/api/qrcode?url=${encodeURIComponent(currentArticleUrl.value)}`);
+//     // if (!response.ok) throw new Error('Backend QR code generation failed');
+//     // const blob = await response.blob();
+//     // const url = window.URL.createObjectURL(blob);
+//     // const link = document.createElement('a');
+//     // link.href = url;
+//     // link.download = `article-${article.value.id}-backend.png`;
+//     // link.click();
+//     // window.URL.revokeObjectURL(url);
+//     ElMessage.info('后端二维码生成功能待实现');
+//   } catch (error) {
+//     console.error('Failed to download QR code from backend:', error);
+//     ElMessage.error('从后端下载二维码失败');
+//   }
+// };
+
+// --- End Share Functionality ---
 
 // 提交评论的处理函数 - 调用 API (Modified to handle replies)
 const submitComment = async () => {
@@ -236,6 +353,31 @@ const submitComment = async () => {
   }
 };
 
+// --- Share Functionality ---
+
+
+// Placeholder for backend QR code generation
+// const downloadQRCodeFromBackend = async () => {
+//   try {
+//     // Replace with your actual API call
+//     // const response = await fetch(`/api/qrcode?url=${encodeURIComponent(currentArticleUrl.value)}`);
+//     // if (!response.ok) throw new Error('Backend QR code generation failed');
+//     // const blob = await response.blob();
+//     // const url = window.URL.createObjectURL(blob);
+//     // const link = document.createElement('a');
+//     // link.href = url;
+//     // link.download = `article-${article.value.id}-backend.png`;
+//     // link.click();
+//     // window.URL.revokeObjectURL(url);
+//     ElMessage.info('后端二维码生成功能待实现');
+//   } catch (error) {
+//     console.error('Failed to download QR code from backend:', error);
+//     ElMessage.error('从后端下载二维码失败');
+//   }
+// };
+
+// --- End Share Functionality ---
+
 // Renamed the original submitComment to submitTopLevelComment if needed,
 // but modifying the existing one is cleaner if the API handles both.
 // If you need separate logic, create a new submitReply function.
@@ -272,6 +414,29 @@ const submitReply = async (parentComment) => {
     // Handle error display
   }
 };
+
+
+// Placeholder for backend QR code generation
+// const downloadQRCodeFromBackend = async () => {
+//   try {
+//     // Replace with your actual API call
+//     // const response = await fetch(`/api/qrcode?url=${encodeURIComponent(currentArticleUrl.value)}`);
+//     // if (!response.ok) throw new Error('Backend QR code generation failed');
+//     // const blob = await response.blob();
+//     // const url = window.URL.createObjectURL(blob);
+//     // const link = document.createElement('a');
+//     // link.href = url;
+//     // link.download = `article-${article.value.id}-backend.png`;
+//     // link.click();
+//     // window.URL.revokeObjectURL(url);
+//     ElMessage.info('后端二维码生成功能待实现');
+//   } catch (error) {
+//     console.error('Failed to download QR code from backend:', error);
+//     ElMessage.error('从后端下载二维码失败');
+//   }
+// };
+
+// --- End Share Functionality ---
 
 
 onMounted(async () => {
@@ -370,10 +535,22 @@ function goToUserProfile() {
 }
 .action-btn {
   width: 80%;
-  margin-bottom: 10px; /* Remove margin-bottom if using gap */
+  /* margin-bottom: 10px; */ /* Removed as gap is used in action-card */
   padding: 8px 10px; /* Adjust padding */
   font-size: 14px; /* Adjust font size */
   border-radius: 6px; /* Add border-radius */
+  margin-left: 0 !important; /* Override element-plus strange margin */
+}
+
+/* Ensure dropdown takes button width and aligns items */
+.share-dropdown {
+  width: 80%;
+  display: block; /* Make dropdown block to take width */
+}
+
+.share-btn-inner {
+  width: 100%; /* Make inner button fill dropdown */
+  justify-content: center; /* Center text and icon */
 }
 
 /* Specific style for the edit button */
@@ -475,9 +652,9 @@ function goToUserProfile() {
   text-decoration: underline;
 }
 
-.le{
-  margin-left: 0px;
-}
+/* .le{ */
+  /* margin-left: 0px; */ /* Removed as .action-btn handles margin */
+/* } */
 
 /* Comment Section Styles */
 .comment-section {

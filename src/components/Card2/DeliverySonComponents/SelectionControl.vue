@@ -17,7 +17,7 @@
   </template>
   
   <script setup>
-  import { defineProps, defineEmits } from 'vue';
+  // import { defineProps, defineEmits } from 'vue'; // Removed unnecessary imports
 
   const props = defineProps({
     selectAll: Boolean,

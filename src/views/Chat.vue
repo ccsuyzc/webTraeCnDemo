@@ -113,8 +113,8 @@ const currentUserId = computed(() => authStore.user?.ID);
 // 当前用户信息 (从 store 获取)
 const currentUser = computed(() => ({
   id: currentUserId.value,
-  name: authStore.user?.Username || '我',
-  avatar: authStore.user?.AvatarURL || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
+  name: authStore.user.Username || '我',
+  avatar: authStore.user.AvatarURL || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'
 }));
 
 // 联系人/会话列表数据 (将从 API 获取)

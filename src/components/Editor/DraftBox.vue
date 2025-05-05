@@ -21,7 +21,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, defineEmits, defineExpose } from 'vue'; // Import defineExpose
+import { ref, onMounted } from 'vue'; // Import defineExpose
 import { ElCard, ElButton, ElScrollbar, ElMessage } from 'element-plus'; // Import Element Plus components
 import { fetchUserDrafts, fetchDraftDetail } from '@/api/articles'; // Import API functions
 

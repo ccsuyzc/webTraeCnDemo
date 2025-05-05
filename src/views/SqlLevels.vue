@@ -51,8 +51,8 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 // 尝试从 sql-mother 子项目导入关卡数据
 // 注意：这可能需要调整构建配置或复制/调整数据结构
-import mainLevelsData from '../../code/sql-mother-master/src/levels/mainLevels';
-import customLevelsData from '../../code/sql-mother-master/src/levels/customLevels';
+import mainLevelsData from '../core/levels/mainLevels.js';
+import customLevelsData from '../core/levels/customLevels.js';
 
 const router = useRouter();
 

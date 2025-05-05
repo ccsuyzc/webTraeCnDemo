@@ -33,7 +33,13 @@
         </div>
       </div>
       <button class="write-btn" @click="handleWrite">创作中心</button>
-      <img :src="avatarURL" class="avatar" alt="avatar" @click="handleAvatarClick"/>
+      <div class="avatar-container">
+        <img :src="avatarURL" class="avatar" alt="avatar" @click="toggleAvatarDropdown"/>
+        <div v-if="showAvatarDropdown" class="avatar-dropdown">
+          <div class="dropdown-item" @click="handleGoToProfile">个人主页</div>
+          <div class="dropdown-item" @click="handleLogout">退出登录</div>
+        </div>
+      </div>
     </div>
   </header>
 </template>
@@ -41,14 +47,20 @@
 <script setup>
 import { reactive, ref, onMounted } from 'vue' // Import onMounted
 import { useRouter } from 'vue-router'
+import { useAuthStore } from '@/store/authStore' // Import auth store
+
 const router = useRouter()
+const authStore = useAuthStore() // Use auth store
+
 const activeTab = ref('首页')
 const searchQuery = ref('') // Add searchQuery state
 const searchHistory = ref([]) // Add searchHistory state
 const showHistory = ref(false) // Add showHistory state
+const showAvatarDropdown = ref(false) // State for avatar dropdown visibility
 
 // 从store中获取用户信息 并更新AvatarURL 
-const user = reactive(JSON.parse(localStorage.getItem('userInfo')) || {})
+// Use authStore state if available, otherwise fallback to localStorage
+const user = reactive(authStore.user || JSON.parse(localStorage.getItem('userInfo')) || {})
 const avatarURL = ref(user.AvatarURL || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png')
 
 // Load search history on mount
@@ -86,11 +98,30 @@ function handleWrite() {
   router.push("/creator")
 }
 
-function handleAvatarClick() {
-    router.push("/user/1")
+function toggleAvatarDropdown() {
+  showAvatarDropdown.value = !showAvatarDropdown.value
 }
 
-// --- Search Functions ---
+function handleGoToProfile() {
+  showAvatarDropdown.value = false // Close dropdown
+  // Check if user is logged in (using store state or token in localStorage)
+  if ( localStorage.getItem('token')) {
+    const userId = authStore.user?.ID // Optional chaining for safety
+    if (userId) {
+      router.push(`/user/${userId}`)
+    } else {
+      // Fallback or handle error if user ID is somehow missing
+      console.error("当前用户缺少id");
+      router.push('/login') // Redirect to login if ID missing but token exists?
+    }
+  } else {
+    // Not logged in, redirect to login
+    console.log("当前用户缺少token");
+    router.push('/login')
+  }
+}
+
+// ---   ---
 function showHistoryDropdown() {
   const history = localStorage.getItem('searchHistory')
   if (history) {
@@ -134,6 +165,16 @@ function searchFromHistory(query) {
   handleSearch()
 }
 // --- End Search Functions ---
+
+// --- Logout Function ---
+function handleLogout() {
+  showAvatarDropdown.value = false // Close dropdown
+  authStore.logout() // Call logout action from store
+  // Optionally clear local reactive user state if needed, though store should handle it
+  Object.keys(user).forEach(key => delete user[key]); 
+  avatarURL.value = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'; // Reset avatar
+  router.push('/login') // Redirect to login
+}
 
 </script>
 
@@ -256,11 +297,43 @@ function searchFromHistory(query) {
 .write-btn:hover {
   background: #0056b3;
 }
+.avatar-container {
+  position: relative;
+  display: inline-block;
+}
+
 .avatar {
   width: 36px;
   height: 36px;
   border-radius: 50%;
   margin-left: 8px;
   border: 1px solid #e5e6eb;
+  cursor: pointer;
 }
+
+.avatar-dropdown {
+  position: absolute;
+  top: calc(100% + 5px); /* Position below the avatar with a small gap */
+  right: 0; /* Align to the right edge of the container */
+  background-color: #fff;
+  border: 1px solid #e5e6eb;
+  border-radius: 4px;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  z-index: 210;
+  min-width: 100px; /* Ensure minimum width */
+  padding: 5px 0; /* Add some vertical padding */
+}
+
+.dropdown-item {
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #333;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.dropdown-item:hover {
+  background-color: #f5f7fa;
+}
+
 </style>

@@ -31,13 +31,14 @@
             :editorStyle="{ height: '300px' }" 
             :resultStatus="resultStatus"
             @submit="handleSqlSubmit"
+            @initialDataLoaded="handleInitialDataLoaded" 
           />
            <div v-else>
             <p>等待关卡加载...</p>
           </div>
         </el-card>
 
-        <!-- Results -->
+        <!--   结果 -->
         <el-card class="box-card sql-result-card" style="margin-top: 20px;">
           <SqlResult
             :result="sqlResult"
@@ -45,6 +46,7 @@
             :resultStatus="resultStatus"
             :errorMsg="errorMsg"
             :level="currentLevel"
+            :initialResult="initialSqlResult" 
           />
         </el-card>
       </el-col>
@@ -58,13 +60,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { ElRow, ElCol, ElCard, ElMessage } from 'element-plus';
 
 // Import components from sql-mother subproject
-import QuestionBoard from '../../code/sql-mother-master/src/components/QuestionBoard.vue';
-import SqlEditor from '../../code/sql-mother-master/src/components/SqlEditor.vue';
-import SqlResult from '../../code/sql-mother-master/src/components/SqlResult.vue';
+import QuestionBoard from '../components/ST/QuestionBoard.vue';
+import SqlEditor from '../components/ST/SqlEditor.vue';
+import SqlResult from '../components/ST/SqlResult.vue';
 
 // Import level data and helpers from sql-mother
-import { getLevelByKey } from '../../code/sql-mother-master/src/levels';
-import { checkResult, RESULT_STATUS_ENUM } from '../../code/sql-mother-master/src/core/result';
+import { getLevelByKey } from '../../src/core/levels/index.js';
+import { checkResult, RESULT_STATUS_ENUM } from '../../src/core/result.js';
 // Assuming LevelType is globally available or defined elsewhere if needed
 // import type { LevelType } from '../../code/sql-mother-master/src/types';
 // Assuming QueryExecResult is globally available or defined elsewhere if needed
@@ -75,12 +77,13 @@ const router = useRouter();
 
 const levelKey = ref(route.params.levelKey);
 const currentLevel = ref(null); // Use null initially: ref<LevelType | null>(null);
-const sqlResult = ref([]); // ref<QueryExecResult[]>([]);
-const answerResult = ref([]); // ref<QueryExecResult[]>([]);
+const sqlResult = ref([]); // ref<QueryExecResult[]>([]); 这是一个数组，可能需要根据你的具体实现进行调整
+const answerResult = ref([]); // ref<QueryExecResult[]>([]);   
 const resultStatus = ref(RESULT_STATUS_ENUM.DEFAULT); // ref<number>(RESULT_STATUS_ENUM.DEFAULT);
 const errorMsg = ref(''); // ref<string>('');
+const initialSqlResult = ref([]); // 新增：用于存储初始数据
 
-// Function to load level data
+// 这个函数用于加载关卡数据
 const loadLevel = (key) => {
   const level = getLevelByKey(key);
   if (level) {
@@ -90,6 +93,7 @@ const loadLevel = (key) => {
     answerResult.value = [];
     resultStatus.value = RESULT_STATUS_ENUM.DEFAULT;
     errorMsg.value = '';
+    initialSqlResult.value = []; // 重置初始数据
   } else {
     console.error(`Level with key '${key}' not found.`);
     ElMessage.error(`关卡 ${key} 加载失败`);
@@ -99,7 +103,13 @@ const loadLevel = (key) => {
   }
 };
 
-// Handle SQL submission from SqlEditor component
+// 新增：处理从 SqlEditor 传来的初始数据
+const handleInitialDataLoaded = (initialData) => {
+  initialSqlResult.value = initialData;
+  // 初始加载时不改变 resultStatus 或显示消息
+};
+
+// 这个函数用于处理 SQL 提交
 const handleSqlSubmit = (sql, result, ansResult, errMsg) => {
   sqlResult.value = result;
   answerResult.value = ansResult;
@@ -120,12 +130,13 @@ const handleSqlSubmit = (sql, result, ansResult, errMsg) => {
   }
 };
 
-// Load level data when the component mounts
+// 这个函数用于在组件挂载时执行，用于加载当前关卡的信息和结果。
 onMounted(() => {
   loadLevel(levelKey.value);
 });
 
 // Watch for route changes to load new levels if navigating between practice pages
+// 这个函数用于在组件挂载时执行，用于加载当前关卡的信息和结果。
 watch(() => route.params.levelKey, (newKey) => {
   if (newKey && newKey !== levelKey.value) {
     levelKey.value = newKey;

@@ -1,12 +1,11 @@
 import { defineStore } from 'pinia';
 import { loginWithAccount } from '@/api/auth'; // 假设你的 API 调用在这里
 import router from '@/router'; // 引入 router
-import { lo } from 'element-plus/es/locales.mjs';
 
 export const useAuthStore = defineStore('auth', {
   state: () => ({
     token: localStorage.getItem('token') || null,
-    user: localStorage.getItem('userInfo') || null,
+    user: JSON.parse(localStorage.getItem('userInfo')) || null,
     isAuthenticated: !!localStorage.getItem('token'),
   }),
   getters: {
@@ -19,16 +18,16 @@ export const useAuthStore = defineStore('auth', {
       try {
         const response = await loginWithAccount(username, password);
         // 假设响应包含 token 和用户信息
-        const { token, user } = response.data; 
+        const { token, data } = response.data; 
 
         this.token = token;
-        this.user = user;
+        this.user = data;
         this.isAuthenticated = true;
 
         // 将 token 和用户信息存储到 localStorage
         localStorage.setItem('token', token);
-        localStorage.setItem('user', JSON.stringify(user));
-        localStorage.setItem('userInfo', JSON.stringify(user));
+        localStorage.setItem('user', JSON.stringify(data));
+        localStorage.setItem('userInfo', JSON.stringify(data));
 
         // 登录成功后可以跳转到首页或其他页面
         router.push('/'); 

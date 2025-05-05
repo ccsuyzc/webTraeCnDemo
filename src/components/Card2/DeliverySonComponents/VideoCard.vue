@@ -1,9 +1,9 @@
 <template>
   <div
     class="video-card"
-    :class="{ selected: video.IsSelect }"
     @mouseenter="handleMouseEnter"
     @mouseleave="handleMouseLeave"
+    @click="handleCardClick" 
   >
     <el-popover
       class="box-item"
@@ -18,8 +18,11 @@
           <video ref="videoPlayer" class="video-player" loop muted>
             <source :src="video.VideoSrc" type="video/mp4" />
           </video>
-          <!-- 按钮组 -->
-          <div class="video-actions">
+          <!-- 视频时长 (示例位置，可调整) -->
+          <div class="video-duration">{{ video.duration }}</div>
+
+          <!-- 按钮组 (Removed) -->
+          <!-- <div class="video-actions">
             <div class="left-actions">
               <el-checkbox
                 :model-value="video.IsSelect" 
@@ -34,23 +37,41 @@
                 icon="el-icon-download" 
               />
             </div>
-          </div>
+          </div> -->
 
-          <div class="video-info-overlay">
-            <!-- 这里添加你的视频信息内容 -->
-          </div>
+          <!-- 移除旧的覆盖层 -->
+          <!-- <div class="video-info-overlay">
+          </div> -->
         </div>
       </template>
       <!-- Assuming CardDetails is already Vue 3 compatible or will be refactored -->
       <!-- If CardDetails is not available/compatible, remove or replace it -->
       <!-- <CardDetails :cardData="video"></CardDetails> -->
-      <div>卡片详情占位符</div> 
+      <!-- <div>卡片详情占位符</div>  -->
     </el-popover>
+    <!-- 卡片下方的文字信息区域 -->
+    <div class="video-card-content">
+      <h3 class="video-title" :title="video.title">{{ video.title }}</h3>
+      <div class="video-meta">
+        <span class="author-info">
+          <!-- 使用 Element Plus 图标 -->
+          <el-icon><User /></el-icon> {{ video.author }}
+        </span>
+        <span class="publish-date">{{ video.publishDate }}</span>
+      </div>
+      <div class="video-stats">
+        <span><el-icon><VideoPlay /></el-icon> {{ formatViews(video.views) }}</span>
+        <span><el-icon><ChatLineRound /></el-icon> {{ formatComments(video.comments) }}</span>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, defineProps, defineEmits } from 'vue';
+import { ref } from 'vue';
+import { useRouter } from 'vue-router'; // Import useRouter
+import { ElPopover, ElIcon } from 'element-plus'; // Removed ElCheckbox, ElButton
+import { User, VideoPlay, ChatLineRound } from '@element-plus/icons-vue'; // 引入所需图标
 // Assuming CardDetails is not needed for this refactor or will be handled separately
 // import CardDetails from "@/components/ContainerCenter/TikTok/Card/CardDetails/CardDetails.vue";
 
@@ -58,36 +79,70 @@ const props = defineProps({
   video: {
     type: Object,
     required: true,
+    // Ensure video object has an 'id' property
+    // validator: (value) => value && value.id !== undefined
   },
 });
 
-const emit = defineEmits(['select-change', 'download']);
+const router = useRouter(); // Get router instance
+
+// const emit = defineEmits(['select-change', 'download']); (Removed emits)
 
 const videoPlayer = ref(null);
 
 const handleMouseEnter = () => {
-  if (!props.video.IsSelect && videoPlayer.value) {
+  // if (!props.video.IsSelect && videoPlayer.value) { (Removed IsSelect check)
+  if (videoPlayer.value) {
     videoPlayer.value.play();
   }
 };
 
 const handleMouseLeave = () => {
-  if (!props.video.IsSelect && videoPlayer.value) {
+  // if (!props.video.IsSelect && videoPlayer.value) { (Removed IsSelect check)
+  if (videoPlayer.value) {
     const player = videoPlayer.value;
     player.pause();
     player.currentTime = 0;
   }
 };
 
-// 处理复选框的选中状态
-const handleCheckboxChange = (value) => {
-  console.log("点击了复选框", value);
-  // Emit an event with the video data and the new selection state
-  emit('select-change', { ...props.video, IsSelect: value });
+// Function to handle card click and navigate
+const handleCardClick = () => {
+  // Assuming video object has an 'id'. Adjust if needed.
+  if (props.video && props.video.id) {
+    router.push({ name: 'VideoPlayer', params: { id: props.video.id } });
+  } else {
+    console.error('Video ID is missing, cannot navigate.');
+    // Optionally navigate to a default or error page
+  }
 };
 
-const handleDownload = () => {
-  emit('download', props.video);
+// 处理复选框的选中状态 (Removed)
+// const handleCheckboxChange = (value) => {
+//   console.log("点击了复选框", value);
+//   // Emit an event with the video data and the new selection state
+//   emit('select-change', { ...props.video, IsSelect: value });
+// };
+
+// (Removed handleDownload)
+// const handleDownload = () => {
+//   emit('download', props.video);
+// };
+
+// 格式化播放量
+const formatViews = (views) => {
+  if (views >= 10000) {
+    return (views / 10000).toFixed(1) + '万';
+  }
+  return views;
+};
+
+// 格式化评论数
+const formatComments = (comments) => {
+  if (comments >= 10000) {
+    return (comments / 10000).toFixed(1) + '万';
+  }
+  return comments;
 };
 
 </script>
@@ -143,93 +198,83 @@ const handleDownload = () => {
   animation: fadeIn 0.3s ease;
 }
 
-.video-actions {
+/* Removed .video-actions styles */
+/* .video-actions { ... } */
+/* .left-actions { ... } */
+/* .right-actions { ... } */
+/* .action-btn { ... } */
+
+.video-duration {
   position: absolute;
-  top: 12px;
-  left: 12px;
-  right: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  opacity: 0;
-  transition: opacity 0.3s ease;
-  z-index: 10;
+  bottom: 8px;
+  right: 8px;
+  background-color: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 12px;
 }
 
-.video-card.selected .video-actions,
-.video-card:hover .video-actions {
-  opacity: 1;
-}
-
-.left-actions {
-  display: flex;
-  align-items: center;
-}
-
-.right-actions {
-  display: flex;
-  align-items: center;
-}
-
-.action-btn {
-  /* Keep existing styles or update for Element Plus if needed */
-  /* Example: Adjust padding/size if default Element Plus button looks different */
-  margin-left: 8px;
-}
-
-
-.video-info-overlay {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.8), transparent);
-  color: white;
-  padding: 15px;
-  transform: translateY(100%);
-  opacity: 0;
-  transition: all 0.3s ease;
-  pointer-events: none;
-}
-
-.video-card:hover .video-info-overlay {
-  transform: translateY(0);
-  opacity: 1;
-}
-
-.video-info-content {
-  padding: 15px;
-  background-color: #fff; /* Added background for content below thumbnail */
+.video-card-content {
+  padding: 12px;
 }
 
 .video-title {
-  font-size: 16px;
-  font-weight: bold;
-  margin-bottom: 8px;
-  color: #303133;
+  font-size: 15px;
+  font-weight: 500;
+  color: #333;
+  margin: 0 0 8px 0;
+  /* 多行省略 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.4;
+  height: calc(1.4em * 2); /* 适应两行的高度 */
 }
 
-.video-description {
-  font-size: 14px;
-  color: #606266;
-  line-height: 1.5;
+.video-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: #999;
+  margin-bottom: 8px;
+}
+
+.author-info {
+  display: flex;
+  align-items: center;
+}
+
+.author-info .el-icon {
+  margin-right: 4px;
+}
+
+.video-stats {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #999;
+}
+
+.video-stats span {
+  display: flex;
+  align-items: center;
+  margin-right: 12px;
+}
+
+.video-stats .el-icon {
+  margin-right: 4px;
 }
 
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
-
-/* Adjust checkbox style if needed for Element Plus */
-.el-checkbox {
-  /* Custom styles if needed */
-}
-
-/* Adjust popover style if needed */
-.el-popover {
-  /* Custom styles if needed */
-}
-
-/* Remove deep selectors if not needed or update syntax */
-/* Example: ::v-deep .el-checkbox__inner */
 </style>

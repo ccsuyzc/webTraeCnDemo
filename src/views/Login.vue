@@ -84,8 +84,13 @@ const handleAccountLogin = async () => {
     console.log('登录成功:', response.data);
     // 存储 token 和用户信息 (示例：存入 localStorage)
     localStorage.setItem('token', response.data.token);
-    localStorage.setItem('userInfo', JSON.stringify(response.data.data));
-    localStorage.setItem('user', JSON.stringify(response.data.data));
+    console.log('用户信息:', response.data.data);
+    console.log('用户信息:', response.data);
+    let data = response.data.data;
+    // 存储用户信息到 localStorage 或其他持久化方式
+    localStorage.setItem('demo', JSON.stringify("demo",{"demo":"demo"}));
+    localStorage.setItem('userInfo', JSON.stringify(data));
+    localStorage.setItem('user', JSON.stringify(data));
         const success = await authStore.login(username.value, password.value);
  if (success) {
      ElMessage.success('登录成功');

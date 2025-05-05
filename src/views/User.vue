@@ -255,7 +255,7 @@ async function handleFollowAction() {
                 </el-card>
               </div>
             </el-tab-pane>
-            <el-tab-pane label="专栏" name="column">专栏内容 (待开发)</el-tab-pane>
+            <el-tab-pane label="收藏" name="column">收藏文章 (待开发)</el-tab-pane>
             <el-tab-pane label="沸点" name="hot">沸点内容 (待开发)</el-tab-pane>
           </el-tabs>
         </el-card>

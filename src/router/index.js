@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router';
 import { useAuthStore } from '@/store/authStore'; // 引入 auth store
 import UserSettings from '../views/UserSettings.vue'
 import CreatorCenter from '../views/CreatorCenter.vue'
@@ -18,10 +18,15 @@ import Practice from '../views/Practice.vue'
 import Chat from '../views/Chat.vue'
 import SqlLevels from '../views/SqlLevels.vue'; // 导入 SQL 关卡选择页面
 import SqlPractice from '../views/SqlPractice.vue'; // 导入 SQL 刷题页面
+import VideoPlayer from '../views/VideoPlayer.vue'; // Import the new component
 
 
 const routes = [
-  { path: '/', component: Home },
+  {
+    path: '/',
+    name: 'Home',
+    component: Home,
+  },
   { path: '/creator', component: CreatorCenter }, // 创作者中心
   { path: '/drafts/:userId', component: Drafts }, // 草稿箱
   { path: '/stats/:userId', component: Stats }, // 统计
@@ -42,6 +47,12 @@ const routes = [
   { path: '/chat/:userId', component: Chat },
   { path: '/creator/stats', component: Stats, meta: { requiresAuth: true } }, // 统计数据
   { path: '/search', component: SearchView }, // Add the search route
+  {
+    path: '/video/:id', // Define the route path with a dynamic segment for video ID
+    name: 'VideoPlayer', // Give the route a name
+    component: VideoPlayer, // Assign the component to this route
+    props: true // Pass route params as props to the component
+  },
 ]
 
 const router = createRouter({
