@@ -33,7 +33,7 @@
           <span class="meta-divider">|</span>
           <span>阅读 {{ article.views }}</span>
         </div>
-        <div class="article-body" v-html="article.content"></div>
+        <div ref="articleBodyRef" class="article-body" v-html="article.content"></div>
       </el-card>
 
       <!-- 评论区 -->
@@ -110,6 +110,74 @@
         </ul>
       </el-card>
     </div>
+
+    <!-- QR Code Dialog -->
+    <el-dialog v-model="qrCodeDialogVisible" title="分享文章二维码" width="300px" center>
+      <div ref="qrCodeContainer" style="text-align: center; padding: 20px;">
+        <qrcode-vue :value="qrCodeValue" :size="200" level="H" />
+        <p style="margin-top: 10px; font-size: 14px; color: #666;">扫码分享给朋友</p>
+      </div>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="qrCodeDialogVisible = false">取消</el-button>
+          <el-button type="primary" @click="downloadQRCode">下载二维码</el-button>
+        </span>
+      </template>
+    </el-dialog>
+
+    <!-- AI Explanation Button -->
+    <el-button
+      v-if="aiButtonVisible"
+      :style="aiButtonStyle"
+      type="primary"
+      size="small"
+      class="ai-explain-button"
+      @click="showAiChat"
+    >
+      AI 解释
+    </el-button>
+
+    <!-- AI Chat Dialog -->
+    <el-dialog
+      v-model="aiChatDialogVisible"
+      title="AI 智能解释"
+      width="500px"
+      draggable
+      :close-on-click-modal="false"
+      @closed="resetAiChat"
+      class="ai-chat-dialog"
+    >
+      <div class="ai-chat-content">
+        <el-scrollbar ref="aiChatScrollbarRef" height="300px">
+          <div ref="aiChatMessagesRef">
+            <div v-for="(msg, idx) in aiChatMessages" :key="idx" :class="['chat-msg', msg.role]">
+              <el-avatar :size="30" class="avatar" :class="msg.role">
+                {{ msg.role === 'user' ? '我' : 'AI' }}
+              </el-avatar>
+              <div class="msg-bubble">
+                <v-md-preview :text="msg.text"></v-md-preview>
+              </div>
+            </div>
+          </div>
+        </el-scrollbar>
+      </div>
+      <el-input
+        v-model="aiChatInput"
+        placeholder="继续提问..."
+        @keyup.enter="sendAiQuery"
+        class="ai-chat-input"
+        clearable
+        size="small"
+        type="textarea"
+        :autosize="{ minRows: 1, maxRows: 3 }"
+      />
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="aiChatDialogVisible = false" size="small">关闭</el-button>
+          <el-button type="primary" @click="sendAiQuery" size="small" :disabled="!aiChatInput.trim() && aiChatMessages.length <= 1">发送</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 
   <!-- QR Code Dialog -->
@@ -125,18 +193,31 @@
       </span>
     </template>
   </el-dialog>
+
 </template>
 
 <script setup>
 import dayjs from 'dayjs';
-import { ref, onMounted, computed } from 'vue'; // Add computed
+import { ref, onMounted, computed, nextTick } from 'vue'; // Add computed, nextTick
 import { useRoute, useRouter } from 'vue-router'; // Import useRouter
 // 导入 Element Plus 组件
-import { ElDropdown, ElDropdownMenu, ElDropdownItem, ElDialog, ElMessage, ElIcon } from 'element-plus';
+import { ElDropdown, ElDropdownMenu, ElDropdownItem, ElDialog, ElMessage, ElIcon, ElButton, ElInput, ElScrollbar, ElAvatar } from 'element-plus'; // Import necessary components
 import { ArrowDown } from '@element-plus/icons-vue'; // Import icon
 import QrcodeVue from 'qrcode.vue'; // Import QR Code component
 import html2canvas from 'html2canvas'; // Import html2canvas
 import { fetchArticleDetailById, fetchArticleComments, postComment } from '../api/articles'; // 导入 API 函数
+import { getAIChatResponse } from '@/api/ai'; // 导入 AI API 函数
+// 引入 v-md-preview for AI chat
+import VMdPreview from '@kangc/v-md-editor/lib/preview';
+import '@kangc/v-md-editor/lib/style/preview.css';
+import githubTheme from '@kangc/v-md-editor/lib/theme/github.js';
+import '@kangc/v-md-editor/lib/theme/style/github.css';
+// highlightjs
+import hljs from 'highlight.js';
+
+VMdPreview.use(githubTheme, {
+  Hljs: hljs,
+});
 import { useAuthStore } from '../store/authStore'; // 导入 Auth Store
 
 const route = useRoute()
@@ -185,6 +266,18 @@ const replyingToUserId = ref(null); // ID of the user being replied to
 const qrCodeDialogVisible = ref(false);
 const qrCodeValue = ref('');
 const qrCodeContainer = ref(null); // Ref for the QR code container element
+
+// --- AI Explanation State ---
+const articleBodyRef = ref(null); // Ref for the article body element
+const selectedText = ref('');
+const aiButtonVisible = ref(false);
+const aiButtonStyle = ref({});
+const aiChatDialogVisible = ref(false);
+const aiChatMessages = ref([]); // Stores { role: 'user' | 'ai', text: string }
+const aiChatInput = ref('');
+const aiChatScrollbarRef = ref(null);
+const aiChatMessagesRef = ref(null);
+const currentSelectionRange = ref(null); // Store selection range
 
 // Function to initiate replying to a comment
 const startReply = (comment) => {
@@ -489,7 +582,206 @@ onMounted(async () => {
     error.value = '未找到文章 ID。';
     isLoading.value = false;
   }
+
+  // Add mouseup listener after component mounts and article content is potentially loaded
+  nextTick(() => {
+    if (articleBodyRef.value) {
+      articleBodyRef.value.addEventListener('mouseup', handleTextSelection);
+      // Add listener to hide button when clicking elsewhere
+      document.addEventListener('mousedown', handleMouseDownOutside);
+    } else {
+      console.warn('articleBodyRef is not available to attach listener.');
+    }
+  });
 });
+
+// Clean up listener on unmount
+import { onUnmounted } from 'vue';
+onUnmounted(() => {
+  if (articleBodyRef.value) {
+    articleBodyRef.value.removeEventListener('mouseup', handleTextSelection);
+  }
+  document.removeEventListener('mousedown', handleMouseDownOutside);
+});
+
+// Function to hide button when clicking outside
+const handleMouseDownOutside = (event) => {
+  // Check if the click is outside the button and not part of a text selection action
+  if (aiButtonVisible.value && !event.target.closest('.ai-explain-button')) {
+      // Use a small timeout to allow the button click event to register if it was the target
+      setTimeout(() => {
+          const selection = window.getSelection();
+          if (!selection || selection.isCollapsed) { // Hide only if no active selection
+               aiButtonVisible.value = false;
+          }
+      }, 100);
+  }
+};
+
+// --- AI Explanation Functions ---
+
+// Function to scroll AI chat to bottom
+const scrollAiChatToBottom = () => {
+  nextTick(() => {
+    const scrollbar = aiChatScrollbarRef.value;
+    if (scrollbar && scrollbar.wrapRef) {
+      scrollbar.wrapRef.scrollTop = scrollbar.wrapRef.scrollHeight;
+    }
+  });
+};
+
+// Handle text selection in article body
+const handleTextSelection = (event) => {
+  const selection = window.getSelection();
+  const text = selection.toString().trim();
+
+  // Check if the selection is within the article body
+  let isInsideArticleBody = false;
+  if (selection.rangeCount > 0) {
+      const range = selection.getRangeAt(0);
+      let container = range.commonAncestorContainer;
+      // Traverse up the DOM tree to see if the selection is within articleBodyRef
+      while (container) {
+          if (container === articleBodyRef.value) {
+              isInsideArticleBody = true;
+              break;
+          }
+          container = container.parentNode;
+      }
+  }
+
+  if (text && isInsideArticleBody) {
+    selectedText.value = text;
+    currentSelectionRange.value = selection.getRangeAt(0).cloneRange(); // Store the range
+    // const rect = currentSelectionRange.value.getBoundingClientRect(); // Not strictly needed for fixed positioning based on click
+
+    // Calculate button position relative to the viewport
+    aiButtonStyle.value = {
+      position: 'fixed', // Use fixed position relative to viewport
+      left: `${event.clientX + 5}px`, // Position based on mouse click coordinates
+      top: `${event.clientY + 5}px`,
+      zIndex: 1000, // Ensure button is above other content
+    };
+    aiButtonVisible.value = true;
+  } else {
+    // If the click was not on the button itself, hide it (handled by handleMouseDownOutside)
+    // aiButtonVisible.value = false; // Let handleMouseDownOutside manage hiding
+  }
+};
+
+// Show AI Chat Dialog
+const showAiChat = () => {
+  if (!selectedText.value) return;
+  aiChatMessages.value = [{ role: 'user', text: `请解释以下内容：\n\n>${selectedText.value.replace(/\n/g, '\n>')}` }];
+  aiChatDialogVisible.value = true;
+  aiButtonVisible.value = false; // Hide button when dialog opens
+  // Optionally send the initial query immediately
+  sendAiQuery(true); // Pass flag to indicate initial query
+};
+
+// Send query to AI
+const sendAiQuery = async (isInitialQuery = false) => {
+  const textToSend = isInitialQuery ? selectedText.value : aiChatInput.value.trim();
+  if (!textToSend) return;
+
+  if (!isInitialQuery) {
+    aiChatMessages.value.push({ role: 'user', text: textToSend });
+    aiChatInput.value = ''; // Clear input after sending
+  }
+
+  scrollAiChatToBottom();
+
+  // Add loading indicator if desired
+  aiChatMessages.value.push({ role: 'ai', text: '思考中...' });
+  scrollAiChatToBottom();
+
+  try {
+    // Prepare messages for API (use current chat context)
+    const apiMessages = aiChatMessages.value
+      .filter(msg => msg.text !== '思考中...') // Exclude loading message
+      .map(msg => ({ role: msg.role === 'ai' ? 'assistant' : 'user', content: msg.text }));
+
+    // Retrieve user token from local storage if needed by API
+    const userToken = localStorage.getItem('deepseek_api_token');
+
+    const response = await getAIChatResponse(apiMessages, userToken);
+
+    // Replace 'Thinking...' with actual response
+    const lastMessageIndex = aiChatMessages.value.length - 1;
+    if (aiChatMessages.value[lastMessageIndex]?.role === 'ai' && aiChatMessages.value[lastMessageIndex]?.text === '思考中...') {
+      aiChatMessages.value[lastMessageIndex].text = response;
+    } else {
+      // Fallback if 'Thinking...' wasn't the last message (shouldn't happen often)
+      aiChatMessages.value.push({ role: 'ai', text: response });
+    }
+
+    // Save conversation to history after getting response
+    if (isInitialQuery) {
+        saveConversationToHistory(selectedText.value, response);
+    }
+
+  } catch (error) {
+    console.error('AI chat error:', error);
+    const lastMessageIndex = aiChatMessages.value.length - 1;
+     if (aiChatMessages.value[lastMessageIndex]?.role === 'ai' && aiChatMessages.value[lastMessageIndex]?.text === '思考中...') {
+        aiChatMessages.value[lastMessageIndex].text = `抱歉，解释时遇到错误: ${error.message || '请稍后再试'}`;
+     } else {
+        aiChatMessages.value.push({ role: 'ai', text: `抱歉，解释时遇到错误: ${error.message || '请稍后再试'}` });
+     }
+    // ElMessage.error('AI 解释失败');
+  } finally {
+    scrollAiChatToBottom();
+  }
+};
+
+// Reset AI Chat state when dialog closes
+const resetAiChat = () => {
+  aiChatMessages.value = [];
+  aiChatInput.value = '';
+  selectedText.value = ''; // Clear selected text as well
+  currentSelectionRange.value = null;
+};
+
+// Save conversation to local storage (compatible with AICoding.vue)
+const saveConversationToHistory = (question, answer) => {
+  const historyKey = 'ai_chat_history';
+  let history = [];
+  try {
+    const savedHistory = localStorage.getItem(historyKey);
+    if (savedHistory) {
+      history = JSON.parse(savedHistory);
+    }
+  } catch (e) {
+    console.error('Failed to parse AI chat history from localStorage:', e);
+    history = []; // Reset if parsing fails
+  }
+
+  // Create chat detail matching AICoding format
+  const chatDetail = [
+    { role: 'user', text: `请解释以下内容：\n\n>${question.replace(/\n/g, '\n>')}` },
+    { role: 'ai', text: answer }
+    // Add subsequent messages from the popup if needed, currently only saves initial Q&A
+  ];
+
+  // Add the new entry
+  history.unshift({ // Add to the beginning
+    question: `解释：“${question.substring(0, 30)}${question.length > 30 ? '...' : ''}”`, // Shortened question for history list
+    answer: answer.substring(0, 50) + (answer.length > 50 ? '...' : ''), // Shortened answer
+    chat: chatDetail
+  });
+
+  // Limit history size if desired (e.g., keep last 50)
+  // history = history.slice(0, 50);
+
+  try {
+    localStorage.setItem(historyKey, JSON.stringify(history));
+  } catch (e) {
+    console.error('Failed to save AI chat history to localStorage:', e);
+    // ElMessage.error('无法保存对话记录');
+  }
+};
+
+// --- End AI Explanation Functions ---
 
 // Function to handle edit button click
 function editArticle() {
@@ -564,6 +856,7 @@ function goToUserProfile() {
   background-color: #0056b3; /* Darker shade on hover */
 }
 .main-content {
+  position: relative; /* Needed for absolute positioning of AI button */
   flex: 1 1 0;
   min-width: 0;
   display: flex; /* Use flexbox for main content */
@@ -736,10 +1029,7 @@ function goToUserProfile() {
     gap: 8px;
 }
 
-.submit-reply-btn,
-.cancel-reply-btn {
-  /* Specific styles for reply buttons if needed */
-}
+
 
 .comment-content {
   font-size: 14px;
@@ -759,6 +1049,75 @@ function goToUserProfile() {
 .nested-reply {
   margin-left: 40px; /* Further indent replies */
   border-left: 2px solid #eee; /* Add a visual indicator */
-  padding-left: 10px;
+  padding-left: 10px;}
+/* Styles for AI Explanation */
+.ai-explain-button {
+  /* position: absolute; /* Set via style binding */
+  padding: 4px 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  border: none;
 }
+
+.ai-chat-dialog .el-dialog__body {
+  padding: 10px 20px; /* Adjust padding */
+}
+
+.ai-chat-content {
+  margin-bottom: 15px;
+}
+
+.ai-chat-input {
+  margin-top: 10px;
+}
+
+/* Reusing chat message styles from AICoding.vue or define similar */
+.chat-msg {
+  display: flex;
+  margin-bottom: 15px;
+  align-items: flex-start; /* Align avatar and bubble */
+}
+
+.chat-msg .avatar {
+  margin-right: 10px;
+  flex-shrink: 0;
+}
+
+.chat-msg .msg-bubble {
+  padding: 8px 12px;
+  border-radius: 8px;
+  max-width: 80%;
+  word-wrap: break-word;
+}
+
+.chat-msg.user {
+  justify-content: flex-end;
+}
+
+.chat-msg.user .avatar {
+  order: 2;
+  margin-right: 0;
+  margin-left: 10px;
+}
+
+.chat-msg.user .msg-bubble {
+  background-color: #e6f7ff; /* Light blue for user */
+  border: 1px solid #bae7ff;
+  order: 1;
+}
+
+.chat-msg.ai .msg-bubble {
+  background-color: #f0f0f0; /* Light grey for AI */
+  border: 1px solid #d9d9d9;
+}
+
+/* Ensure v-md-preview content is styled correctly */
+.msg-bubble .v-md-editor-preview {
+  padding: 0;
+  background: transparent;
+}
+
+.msg-bubble .v-md-editor-preview p {
+  margin-bottom: 0; /* Adjust paragraph margin inside bubble */
+}
+
 </style>
