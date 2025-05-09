@@ -74,6 +74,21 @@
           type="textarea"
           :autosize="{ minRows: 1, maxRows: 4 }"
         />
+        <el-switch
+          v-model="isStreaming"
+          active-text="流式"
+          inactive-text="非流式"
+          style="margin-right: 10px;"
+        />
+        <!-- 新增：模型选择下拉框 -->
+        <el-select v-model="selectedModel" placeholder="选择模型" size="large" style="width: 180px; margin-right: 10px;" :disabled="availableModels.length === 0">
+          <el-option
+            v-for="model in availableModels"
+            :key="model"
+            :label="model"
+            :value="model"
+          />
+        </el-select>
         <el-button type="primary" @click="sendMsg" size="large" :disabled="!input.trim()">发送</el-button>
       </el-footer>
     </el-container>
@@ -82,9 +97,11 @@
 
 <script setup>
 import { ref, nextTick, onMounted, watch } from 'vue';
-import { ElMessage, ElScrollbar, ElInput, ElButton, ElContainer, ElAside, ElMain, ElHeader, ElFooter, ElAvatar } from 'element-plus'; // 引入需要的 Element Plus 组件
+import { ElMessage, ElScrollbar, ElInput, ElButton, ElContainer, ElAside, ElMain, ElHeader, ElFooter, ElAvatar, ElSwitch } from 'element-plus'; // 引入需要的 Element Plus 组件
 import { Delete } from '@element-plus/icons-vue'; // 引入删除图标
-import { getAIChatResponse } from '@/api/ai'; // 引入 AI API 函数
+import { getAIChatResponse, getAvailableModels } from '@/api/ai'; // 引入 AI API 函数
+// 引入 Element Plus 组件 for select
+import { ElSelect, ElOption } from 'element-plus';
 // 引入 v-md-preview
 import VMdPreview from '@kangc/v-md-editor/lib/preview';
 import '@kangc/v-md-editor/lib/style/preview.css';
@@ -120,12 +137,15 @@ const history = ref([
 const activeHistory = ref(0);
 const chat = ref([]); // 当前对话的聊天记录，初始为空
 const input = ref('');
+const isStreaming = ref(false); // 新增：控制是否流式传输
+const availableModels = ref([]);
+const selectedModel = ref(null);
 const chatContentRef = ref(null); // Ref for chat content inner div
 const chatScrollbarRef = ref(null); // Ref for el-scrollbar component
 const apiTokenInput = ref(''); // API Token 输入框绑定
 const userApiToken = ref(''); // 用户保存的 API Token
 
-// Function to scroll chat to bottom
+//  滚动到底部
 const scrollToBottom = () => {
   nextTick(() => {
     const scrollbar = chatScrollbarRef.value;
@@ -152,8 +172,24 @@ onMounted(() => {
     // 如果没有历史记录，创建一个新的空对话
     newConversation();
   }
+  // 获取可用模型列表
+  fetchAvailableModels();
   scrollToBottom(); // 初始加载后滚动到底部
 });
+
+// 获取可用模型列表
+async function fetchAvailableModels() {
+  try {
+    const models = await getAvailableModels();
+    availableModels.value = models;
+    if (models.length > 0) {
+      selectedModel.value = models[0]; // 默认选中第一个模型
+    }
+  } catch (error) {
+    console.error('获取模型列表失败:', error);
+    ElMessage.error('获取模型列表失败，请检查网络或联系管理员。');
+  }
+}
 
 watch(chat, () => {
   scrollToBottom();
@@ -399,8 +435,8 @@ function saveApiToken() {
 
 //   scrollToBottom(); // AI 回复后再次滚动到底部
 // }
-
-async function sendMsg() { // 改为 async 函数
+// 发送信息 sendMsg
+async function sendMsg() {
   const text = input.value.trim();
   if (!text) return;
 
@@ -412,20 +448,95 @@ async function sendMsg() { // 改为 async 函数
   // 准备发送给 API 的消息历史
   // 注意：这里的 chat.value 包含了刚刚添加的用户消息
   // 我们需要传递一个只包含 role 和 text 的消息数组副本
-  const messagesForApi = chat.value.map(({ role, text }) => ({ role, content: text }));
-
-  try {
-    // 调用 AI API 获取回复
-    const aiResponseText = await getAIChatResponse(messagesForApi);
-    const aiMessage = { role: 'ai', text: aiResponseText };
-    chat.value.push(aiMessage);
-  } catch (error) {
-    // 处理 API 调用错误，例如显示错误消息
-    console.error('AI response error:', error);
-    chat.value.push({ role: 'ai', text: '抱歉，AI 回复时遇到了问题。' });
+    // 更新当前激活历史记录的 question (如果这是第一条用户消息)
+  if (chat.value.filter(m => m.role === 'user').length === 1) {
+    history.value[activeHistory.value].question = text.substring(0, 20); // 取前20个字符作为问题概览
   }
 
-  scrollToBottom(); // AI 回复后再次滚动到底部
+  // 准备发送给 API 的消息历史
+  const messagesForApi = chat.value.map(({ role, text }) => ({ role: role === 'ai' ? 'assistant' : role, content: text }));
+
+    // 添加一个临时的 AI 加载中消息 (非流式时，或者流式开始前)
+  const loadingMessage = { role: 'ai', text: '思考中...' };
+  let aiMessageIndex = -1;
+
+  if (!isStreaming.value) {
+    chat.value.push(loadingMessage);
+    scrollToBottom();
+  }
+
+  try {
+    if (isStreaming.value) {
+      // 流式处理
+      const aiMessage = { role: 'ai', text: '' }; // 初始化一个空的 AI 消息
+      chat.value.push(aiMessage);
+      aiMessageIndex = chat.value.length - 1;
+      scrollToBottom();
+
+      // 假设 getAIChatResponse 在流式模式下返回一个 ReadableStream 或类似的迭代器
+      // 注意：getAIChatResponse 需要修改以支持 stream 参数和流式返回
+      const stream = await getAIChatResponse(messagesForApi, userApiToken.value, true, selectedModel.value); // 传递 stream: true 和 selectedModel
+      const reader = stream.getReader();
+      const decoder = new TextDecoder();
+      let accumulatedResponse = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+        const chunk = decoder.decode(value, { stream: true });
+        // 解析 DeepSeek 流式数据块
+        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
+        for (const line of lines) {
+          const jsonData = line.substring('data: '.length);
+          if (jsonData.trim() === '[DONE]') {
+            break;
+          }
+          try {
+            const parsed = JSON.parse(jsonData);
+            if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
+              const contentPiece = parsed.choices[0].delta.content;
+              chat.value[aiMessageIndex].text += contentPiece;
+              accumulatedResponse += contentPiece;
+              scrollToBottom(); // 每次接收到新内容都滚动
+            }
+          } catch (e) {
+            console.error('Error parsing stream chunk:', e, jsonData);
+          }
+        }
+      }
+      history.value[activeHistory.value].answer = accumulatedResponse.substring(0, 30);
+      saveHistory();
+
+    } else {
+      // 非流式处理 (原有逻辑)
+      chat.value.pop(); // 移除加载中消息
+      const aiResponseText = await getAIChatResponse(messagesForApi, userApiToken.value, false, selectedModel.value); // 传递 selectedModel
+      const aiMessage = { role: 'ai', text: aiResponseText };
+      chat.value.push(aiMessage);
+      history.value[activeHistory.value].answer = aiResponseText.substring(0, 30);
+      saveHistory();
+    }
+  } catch (error) {
+    console.error('AI response error:', error);
+    if (aiMessageIndex !== -1 && chat.value[aiMessageIndex] && chat.value[aiMessageIndex].text === '') {
+      // 如果是流式且AI消息为空，则替换为错误信息
+      chat.value[aiMessageIndex].text = `抱歉，AI 回复时遇到了问题: ${error.message || '未知错误'}`;
+    } else if (!isStreaming.value && chat.value[chat.value.length -1].text === '思考中...'){
+      // 如果是非流式且最后一条是loading，替换为错误信息
+      chat.value.pop(); // 移除加载中
+      chat.value.push({ role: 'ai', text: `抱歉，AI 回复时遇到了问题: ${error.message || '未知错误'}` });
+    } else if (isStreaming.value && aiMessageIndex !== -1) {
+      // 流式出错，在当前消息后追加错误
+      chat.value[aiMessageIndex].text += `\n(回复中断: ${error.message || '未知错误'})`;
+    } else {
+       // 其他情况，直接添加错误消息
+      chat.value.push({ role: 'ai', text: `抱歉，AI 回复时遇到了问题: ${error.message || '未知错误'}` });
+    }
+    saveHistory(); // 即使出错也保存一下记录
+  }
+  scrollToBottom(); // 最终滚动到底部
 }
 </script>
 

@@ -3,7 +3,7 @@ import { useAuthStore } from '@/store/authStore'; // 引入 auth store
 import UserSettings from '../views/UserSettings.vue'
 import CreatorCenter from '../views/CreatorCenter.vue'
 import Editor from '../views/Editor.vue'
-import Drafts from '../views/Drafts.vue'
+import MyArticles from '../views/MyArticles.vue'; // Renamed from Drafts.vue
 import Stats from '../views/Stats.vue'
 import SearchView from '../views/SearchView.vue' // Import the new SearchView
 import Home from '../views/Home.vue'
@@ -28,7 +28,7 @@ const routes = [
     component: Home,
   },
   { path: '/creator', component: CreatorCenter }, // 创作者中心
-  { path: '/drafts/:userId', component: Drafts }, // 草稿箱
+  { path: '/my-articles/:userId', component: MyArticles }, // 我的文章 (Renamed from Drafts)
   { path: '/stats/:userId', component: Stats }, // 统计
   { path: '/user/:id', component: User }, // 用户
   { path: '/article/:id', component: ArticleDetail }, // 文章详情
@@ -64,7 +64,7 @@ const router = createRouter({
 router.beforeEach((to, from, next) => {
 
   const authStore = useAuthStore(); // 引入 auth store
-  const requiresAuth = ['CreatorCenter', 'EditorNew', 'EditorEdit', 'AI', 'User', 'UserSettings', 'Drafts', 'Stats']; // 需要登录的路由名称
+  const requiresAuth = ['CreatorCenter', 'EditorNew', 'EditorEdit', 'AI', 'User', 'UserSettings', 'MyArticles', 'Stats']; // 需要登录的路由名称 (Updated Drafts to MyArticles)
   const publicPages = ['Login', 'Register']; // 公开页面（登录后不应访问）
   const authRequired = requiresAuth.includes(to.name); // 判断是否需要登录
   const loggedIn = authStore.isLoggedIn; // 判断是否已登录

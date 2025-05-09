@@ -69,5 +69,12 @@ export const useAuthStore = defineStore('auth', {
       localStorage.setItem('userInfo', JSON.stringify(updatedUser)); // 保持一致性
       console.log('AuthStore user info updated:', this.user);
     },
+
+    // 该函数用来更新仓库的数据
+    updateUser(user, token) {
+      this.token = token;
+      this.user = user;
+      this.isAuthenticated = true;
+    }
   },
 });

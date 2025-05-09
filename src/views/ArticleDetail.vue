@@ -5,7 +5,7 @@
       <el-card class="action-card">
         <!-- Add v-if condition here -->
         <el-button v-if="currentUserId && article.authorId === currentUserId" type="primary" class="action-btn edit-btn" @click="editArticle">编辑</el-button>
-        <el-button class="action-btn">收藏</el-button>
+        <el-button class="action-btn" @click="Collection" >收藏</el-button>
         <!-- Share Button with Dropdown -->
         <el-dropdown @command="handleShareCommand" class="action-btn le share-dropdown">
           <el-button class="action-btn share-btn-inner">
@@ -59,7 +59,7 @@
               <span class="comment-author">{{ comment.author }}</span>
               <span class="comment-date">{{ comment.date }}</span>
               <!-- Add Reply Button -->
-              <el-button type="text" size="small" @click="startReply(comment)" class="reply-btn">回复</el-button>
+              <el-button  size="small" @click="startReply(comment)" class="reply-btn">回复</el-button>
 
             </div>
             <!-- Modify comment content display -->
@@ -181,7 +181,7 @@
   </div>
 
   <!-- QR Code Dialog -->
-  <el-dialog v-model="qrCodeDialogVisible" title="分享文章二维码" width="300px" center>
+  <!-- <el-dialog v-model="qrCodeDialogVisible" title="分享文章二维码" width="300px" center>
     <div ref="qrCodeContainer" style="text-align: center; padding: 20px;">
       <qrcode-vue :value="qrCodeValue" :size="200" level="H" />
       <p style="margin-top: 10px; font-size: 14px; color: #666;">扫码分享给朋友</p>
@@ -192,20 +192,20 @@
         <el-button type="primary" @click="downloadQRCode">下载二维码</el-button>
       </span>
     </template>
-  </el-dialog>
+  </el-dialog> -->
 
 </template>
 
 <script setup>
 import dayjs from 'dayjs';
-import { ref, onMounted, computed, nextTick } from 'vue'; // Add computed, nextTick
+import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'; // Add computed, nextTick, onBeforeUnmount
 import { useRoute, useRouter } from 'vue-router'; // Import useRouter
 // 导入 Element Plus 组件
 import { ElDropdown, ElDropdownMenu, ElDropdownItem, ElDialog, ElMessage, ElIcon, ElButton, ElInput, ElScrollbar, ElAvatar } from 'element-plus'; // Import necessary components
 import { ArrowDown } from '@element-plus/icons-vue'; // Import icon
 import QrcodeVue from 'qrcode.vue'; // Import QR Code component
 import html2canvas from 'html2canvas'; // Import html2canvas
-import { fetchArticleDetailById, fetchArticleComments, postComment } from '../api/articles'; // 导入 API 函数
+import { fetchArticleDetailById, fetchArticleComments, postComment, recordReadingHistory } from '../api/articles'; // 导入 API 函数, recordReadingHistory
 import { getAIChatResponse } from '@/api/ai'; // 导入 AI API 函数
 // 引入 v-md-preview for AI chat
 import VMdPreview from '@kangc/v-md-editor/lib/preview';
@@ -234,6 +234,9 @@ const authStore = useAuthStore(); // Initialize auth store
 const currentUserId = ref(authStore.user.ID || null);
 const currentUserAvatar = ref(authStore.user.avatar || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'); // 使用 store 中的头像或默认
 const currentUsername = ref(authStore.user.Username || '访客'); // 使用 store 中的用户名或默认
+
+// 阅读记录相关状态
+const readingStartTime = ref(null);
 
 const article = ref({ // Initialize with authorId
   id: null,   //文章id 
@@ -319,8 +322,10 @@ const fetchComments = async (articleId) => {
   }
 };
 
-// --- Share Functionality ---
-
+// 点击收藏触发的函数
+const Collection = async () => {
+  
+}
 // Get current article URL
 const currentArticleUrl = computed(() => window.location.href);
 
@@ -531,6 +536,28 @@ const submitReply = async (parentComment) => {
 
 // --- End Share Functionality ---
 
+// --- 发送阅读历史 ---
+const sendReadingRecord = async () => {
+  if (readingStartTime.value && currentUserId.value && article.value && article.value.id) {
+    const readingDuration = Math.round((Date.now() - readingStartTime.value) / 1000); // in seconds
+    if (readingDuration > 0) { // Only record if duration is meaningful
+      try {
+        await recordReadingHistory({
+          article_id: parseInt(article.value.id),
+          user_id: currentUserId.value,
+          duration: readingDuration, // duration in seconds
+        });
+        // console.log('Reading history recorded successfully.');
+      } catch (err) {
+        console.error('Failed to record reading history:', err);
+      }
+    }
+  }
+};
+
+onBeforeUnmount(() => {
+  sendReadingRecord();
+});
 
 onMounted(async () => {
   const articleId = route.params.id; // 从路由获取 ID
@@ -557,6 +584,11 @@ onMounted(async () => {
       article.value.likes = fetchedArticle.data.LikeCount
       // 获取评论
       await fetchComments(articleId);
+
+      if (currentUserId.value && article.value && article.value.id) {
+        readingStartTime.value = Date.now();
+        // console.log('Reading started at:', new Date(readingStartTime.value).toLocaleTimeString());
+      }
 
       // 实际应用中，目录和推荐列表也可能需要根据文章 ID 获取
       // 这里暂时保留静态数据或根据 fetchedArticle 调整

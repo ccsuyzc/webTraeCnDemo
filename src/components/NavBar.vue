@@ -39,7 +39,7 @@ const handleTagClick = (tag, index) => {
   <nav class="navbar"> <!-- Use nav tag and navbar class -->
     <div class="logo">
       <img src="/vite.svg" alt="Logo" />
-      <span>TraeCN</span> <!-- Keep logo text from second template -->
+      <span>Go博客平台</span> <!-- Keep logo text from second template -->
     </div>
     <ul class="nav-list">
       <li

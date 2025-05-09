@@ -80,14 +80,31 @@ const handlePhoneRegister = () => {
   console.log('手机号注册:', { phone: phone.value, code: smsCode.value, password: password.value });
   // router.push('/login');
 };
-const handleEmailRegister = () => {
+const handleEmailRegister = async () => {
   if (password2.value !== confirmPassword2.value) {
     alert('两次输入的密码不一致！');
     return;
   }
-  // 邮箱注册逻辑
-  console.log('邮箱注册:', { email: email.value, code: emailCode.value, password: password2.value });
-  // router.push('/login');
+  try {
+    const response = await verifyEmailRegistration(email.value, emailCode.value);
+    // 假设API成功响应会包含一些数据，例如用户信息或成功消息
+    // 根据实际API响应调整
+    if (response.data.code == 200) { // 请根据你的API响应结构调整这里的判断条件
+      alert('注册成功！');
+      router.push('/login');
+    } else {
+      // 如果API返回了具体的错误信息，可以显示给用户
+      alert(response.data.message || '注册失败，请检查邮箱和验证码是否正确。');
+    }
+  } catch (error) {
+    console.error('邮箱注册失败:', error);
+    // 更友好的错误提示，可以根据error.response.data.message来获取后端返回的错误信息
+    let errorMessage = '注册失败，请稍后重试。';
+    if (error.response && error.response.data && error.response.data.message) {
+      errorMessage = error.response.data.message;
+    }
+    alert(errorMessage);
+  }
 };
 const sendSmsCode = () => {
   if (!phone.value) { alert('请输入手机号'); return; }
@@ -99,15 +116,27 @@ const sendSmsCode = () => {
   // 调用API发送短信验证码
   console.log('发送短信验证码到:', phone.value);
 };
-const sendEmailCode = () => {
-  if (!email.value) { alert('请输入邮箱'); return; }
-  emailCountdown.value = 60;
-  emailTimer = setInterval(() => {
-    emailCountdown.value--;
-    if (emailCountdown.value <= 0) clearInterval(emailTimer);
-  }, 1000);
-  // 调用API发送邮箱验证码
-  console.log('发送邮箱验证码到:', email.value);
+import { sendEmailVerificationCode, verifyEmailRegistration } from '@/api/auth';
+
+const sendEmailCode = async () => {
+  if (!email.value) {
+    alert('请输入邮箱');
+    return;
+  }
+  try {
+    await sendEmailVerificationCode(email.value);
+    alert('验证码已发送，请注意查收！');
+    emailCountdown.value = 60;
+    emailTimer = setInterval(() => {
+      emailCountdown.value--;
+      if (emailCountdown.value <= 0) {
+        clearInterval(emailTimer);
+      }
+    }, 1000);
+  } catch (error) {
+    console.error('发送邮箱验证码失败:', error);
+    alert('发送验证码失败，请稍后重试。');
+  }
 };
 const handleWeChatRegister = () => {
   alert('微信注册功能待接入');

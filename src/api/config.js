@@ -10,6 +10,7 @@ export const AI_SERVICE_CONFIG = {
     apiUrl: 'https://api.deepseek.com/chat/completions'
   },
   custom_backend: {
-    apiUrl: `${BASE_URL}/ai/chat` // 假设自定义后端的 API 地址
+    apiUrl: `${BASE_URL}/ai/chat`, // 假设自定义后端的 API 地址
+    modelsUrl: `${BASE_URL}/ai/models` // 新增：获取模型列表的 API 地址
   }
 };

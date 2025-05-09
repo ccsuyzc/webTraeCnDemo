@@ -2,7 +2,7 @@
   <header class="top-navbar">
     <div class="top-navbar-left">
       <img src="/vite.svg" alt="Logo" class="top-logo" />
-      <span class="top-title">掘土掘金</span>
+      <span class="top-title">Go博客平台</span>
     </div>
     <nav class="top-nav-list">
       <span class="top-nav-item" :class="{active: activeTab==='首页'}" @click="selectTab('首页')">首页</span>
@@ -106,7 +106,7 @@ function handleGoToProfile() {
   showAvatarDropdown.value = false // Close dropdown
   // Check if user is logged in (using store state or token in localStorage)
   if ( localStorage.getItem('token')) {
-    const userId = authStore.user?.ID // Optional chaining for safety
+    const userId = authStore.user.ID // Optional chaining for safety
     if (userId) {
       router.push(`/user/${userId}`)
     } else {

@@ -57,7 +57,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage } from 'element-plus'; // 引入 ElMessage
-import { loginWithAccount } from '@/api/auth'; // 导入登录 API 函数
+import { loginWithAccount, sendVerificationCode, loginWithEmail } from '@/api/auth'; // 导入登录 API 函数
 import { useAuthStore } from '@/store/authStore'; // 引入 auth store
 
 const activeTab = ref('account');
@@ -105,25 +105,59 @@ const handleAccountLogin = async () => {
      ElMessage.error(error.response?.data?.message || '登录失败，请稍后重试');
   }
 };
-const handleEmailLogin = () => {
-  // 邮箱验证码登录逻辑
-  console.log('邮箱验证码登录:', { email: email.value, code: emailCode.value });
-  // router.push('/');
+const handleEmailLogin = async () => {
+  if (!email.value || !emailCode.value) {
+    ElMessage.error('请输入邮箱和验证码');
+    return;
+  }
+  try {
+    const response = await loginWithEmail(email.value, emailCode.value);
+    console.log('邮箱登录成功:', response.data);
+    // 假设 authStore 有一个 loginWithToken 的方法来处理 token 和用户信息
+    // 或者直接在这里处理
+    localStorage.setItem('token', response.data.token);
+    localStorage.setItem('userInfo', JSON.stringify(response.data.data));
+    localStorage.setItem('user', JSON.stringify(response.data.data));
+    // authStore.setUser(response.data.data); // 假设 authStore 有 setUser 方法
+    // authStore.setToken(response.data.token); // 假设 authStore 有 setToken 方法
+    authStore.updateUser(response.data.data, response.data.token)
+    ElMessage.success('登录成功');
+    router.push('/'); // 跳转到首页或其他页面
+  } catch (error) {
+    console.error('邮箱登录失败:', error.response ? error.response.data : error.message);
+    ElMessage.error(error.response?.data?.message || '邮箱登录失败，请稍后重试');
+  }
 };
 const handlePhoneLogin = () => {
   // 手机号验证码登录逻辑
   console.log('手机号登录:', { phone: phone.value, code: smsCode.value });
   // router.push('/');
 };
-const sendEmailCode = () => {
-  if (!email.value) { alert('请输入邮箱'); return; }
-  emailCountdown.value = 60;
-  emailTimer = setInterval(() => {
-    emailCountdown.value--;
-    if (emailCountdown.value <= 0) clearInterval(emailTimer);
-  }, 1000);
-  // 调用API发送邮箱验证码
-  console.log('发送邮箱验证码到:', email.value);
+const sendEmailCode = async () => {
+  if (!email.value) {
+    ElMessage.error('请输入邮箱地址');
+    return;
+  }
+  // 简单的邮箱格式验证
+  const emailPattern = /^[^s@]+@[^s@]+\.[^s@]+$/;
+  if (!emailPattern.test(email.value)) {
+    ElMessage.error('请输入有效的邮箱地址');
+    return;
+  }
+  try {
+    await sendVerificationCode(email.value); // 假设 'login' 是验证码类型
+    ElMessage.success('验证码已发送，请注意查收');
+    emailCountdown.value = 60;
+    emailTimer = setInterval(() => {
+      emailCountdown.value--;
+      if (emailCountdown.value <= 0) {
+        clearInterval(emailTimer);
+      }
+    }, 1000);
+  } catch (error) {
+    console.error('发送验证码失败:',  error.response.data);
+    ElMessage.error(error.response.data.message || '发送验证码失败，请稍后重试');
+  }
 };
 const sendSmsCode = () => {
   if (!phone.value) { alert('请输入手机号'); return; }

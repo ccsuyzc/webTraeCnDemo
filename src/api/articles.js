@@ -322,15 +322,55 @@ export const fetchArticlesByCategory = async (categoryId, count) => {
 
 // 新增：搜索文章
 export const searchArticles = async (query) => {
+  let userId = JSON.parse(localStorage.getItem('userInfo')).ID;
+  if (userId) {
+    try {
+      const response = await axios.get(`${BASE_URL}/search/articles`, {
+        params: { q: query , userid: userId}
+      });
+      // console.log("this is ", response.data);
+      
+      return response.data; // 假设后端直接返回 { local: [], external: [] }
+    } catch (error) {
+      console.error('Error searching articles:', error);
+      throw error; // 或者处理错误，返回一个特定的错误对象
+    }
+  }else{
+    try {
+      const response = await axios.get(`${BASE_URL}/search/articles`, {
+        params: { q: query }
+      });
+      // console.log("this is ", response.data);
+      
+      return response.data; // 假设后端直接返回 { local: [], external: [] }
+    } catch (error) {
+      console.error('Error searching articles:', error);
+      throw error; // 或者处理错误，返回一个特定的错误对象
+    }
+  }
+ 
+};
+
+/**
+ * 发送文章阅读记录
+ * @param {object} historyData - 阅读记录数据 { UserID, ArticleID, Duration, Timestamp }
+ * @returns {Promise<object>} - 后端返回的响应
+ */
+export const recordReadingHistory = async (historyData) => {
   try {
-    const response = await axios.get(`${BASE_URL}/search/articles`, {
-      params: { q: query }
-    });
-    // console.log("this is ", response.data);
-    
-    return response.data; // 假设后端直接返回 { local: [], external: [] }
+    // 确保包含认证 token，如果后端需要的话
+    const token = localStorage.getItem('token');
+    const headers = {};
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    // 后端接口地址 /api/reading-history
+    const response = await axios.post(`${BASE_URL}/reading-history`, historyData, { headers });
+    return response.data;
   } catch (error) {
-    console.error('Error searching articles:', error);
-    throw error; // 或者处理错误，返回一个特定的错误对象
+    console.error('Error posting reading history:', error);
+    const errorMessage = error.response?.data?.error || '发送阅读记录失败';
+    // ElMessage.error(errorMessage); // 可以在组件中处理提示
+    throw new Error(errorMessage);
   }
 };

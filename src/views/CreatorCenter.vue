@@ -7,10 +7,10 @@ function navigateToEditor() {
   router.push('/editor');
 }
 
-function navigateToDrafts() {
+function navigateToMyArticles() {
   // 假设用户id从本地存储或store获取
-  const userId = localStorage.getItem('userId') || '1';
-  router.push({ path: `/drafts/${userId}` });
+  const userId = localStorage.getItem('userId') || '1'; // Consider using authStore for userId
+  router.push({ path: `/my-articles/${userId}` }); // Updated path
 }
 
 function navigateToStats() {
@@ -29,9 +29,9 @@ function navigateToStats() {
           <div class="function-desc">开始撰写新的博客文章</div>
         </el-card>
 
-        <el-card class="function-item" shadow="hover" @click="navigateToDrafts">
-          <div class="function-title">我的草稿</div>
-          <div class="function-desc">查看和管理未发布的草稿</div>
+        <el-card class="function-item" shadow="hover" @click="navigateToMyArticles">
+          <div class="function-title">我的文章</div>
+          <div class="function-desc">查看和管理已发布的文章</div>
         </el-card>
 
         <el-card class="function-item" shadow="hover" @click="navigateToStats">
