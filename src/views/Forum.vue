@@ -34,7 +34,7 @@
             <button class="publish-btn" @click="publishPost">发布</button>
           </div>
         </div>
-         <div class="select-circle">请选择圈子 ></div>
+         <div class="select-circle">请选择圈子 </div>
       </div>
       <div class="post-feed">
         <!-- Use v-for to loop through posts -->
@@ -95,95 +95,157 @@
 </template>
 
 <script setup>
-import { ref, reactive } from 'vue';
+import { ref, reactive, onMounted } from 'vue';
 
-const activeFilter = ref('latest'); // Default filter
+const activeFilter = ref('latest'); // 默认筛选
 const newPostContent = ref('');
-const expandedComments = reactive({}); // Tracks expanded comment sections { postId: boolean }
-const newCommentText = reactive({}); // Tracks new comment input for each post { postId: string }
+const expandedComments = reactive({}); // 跟踪展开的评论区 { postId: boolean }
+const newCommentText = reactive({}); // 跟踪每个帖子的评论输入 { postId: string }
 
-// Sample posts data (replace with actual API call)
-const allPosts = {
-  latest: [
-    { id: 1, author: '随云632', avatar: 'https://avatars.githubusercontent.com/u/2?v=4', meta: '前端开发 · 20分钟前', content: '一面过了，HR说联系二面，几天过去了，还没动静，啥情况啊，不会是刷KPI的吧', likes: 10, comments: [{id: 101, author: '用户A', text: '可能是流程慢'}] },
-    { id: 2, author: '蟹蟹蟹风流', avatar: 'https://avatars.githubusercontent.com/u/3?v=4', meta: '后端开发 · 12分钟前', content: '又发现一个宝藏工具！', likes: 5, comments: [] },
-  ],
-  hot: [
-    { id: 3, author: '热门用户1', avatar: 'https://avatars.githubusercontent.com/u/4?v=4', meta: '产品经理 · 1小时前', content: '这个热门帖子内容示例', likes: 150, comments: [] },
-  ],
-  followed: [
-     { id: 4, author: '关注用户A', avatar: 'https://avatars.githubusercontent.com/u/5?v=4', meta: '设计师 · 2小时前', content: '这是我关注的人发的帖子', likes: 25, comments: [] },
-  ],
-  'circle-feedback': [
-    { id: 5, author: '反馈用户', avatar: 'https://avatars.githubusercontent.com/u/6?v=4', meta: '测试 · 5分钟前', content: '建议增加XX功能', likes: 2, comments: [] },
-  ],
-  // Add more posts for other filters/circles as needed
+// 圈子相关数据
+const circles = ref([]); // 圈子列表
+const selectedCircleId = ref(null); // 当前选择的圈子ID
+const posts = ref([]); // 当前显示的帖子列表
+const loadingPosts = ref(false);
+const loadingCircles = ref(false);
+
+// 获取所有圈子
+const fetchCircles = async () => {
+  loadingCircles.value = true;
+  try {
+    const res = await fetch('/groups');
+    const data = await res.json();
+    if (Array.isArray(data.groups)) {
+      circles.value = data.groups;
+      if (!selectedCircleId.value && data.groups.length > 0) {
+        selectedCircleId.value = data.groups[0].ID || data.groups[0].id;
+      }
+    }
+  } catch (e) {
+    // 错误处理
+  } finally {
+    loadingCircles.value = false;
+  }
 };
 
-const posts = ref(allPosts[activeFilter.value] || []);
+// 获取圈子帖子列表
+const fetchGroupPosts = async (groupId) => {
+  if (!groupId) return;
+  loadingPosts.value = true;
+  try {
+    const res = await fetch(`/groups/${groupId}/posts`);
+    const data = await res.json();
+    posts.value = Array.isArray(data.posts) ? data.posts : [];
+  } catch (e) {
+    posts.value = [];
+  } finally {
+    loadingPosts.value = false;
+  }
+};
 
+// 获取最新10条帖子
+const fetchLatestPosts = async () => {
+  loadingPosts.value = true;
+  try {
+    const res = await fetch('/posts/latest');
+    const data = await res.json();
+    posts.value = Array.isArray(data.posts) ? data.posts : [];
+  } catch (e) {
+    posts.value = [];
+  } finally {
+    loadingPosts.value = false;
+  }
+};
+
+// 切换筛选
 const selectFilter = (filter) => {
   activeFilter.value = filter;
-  // Simulate fetching posts based on the filter
-  posts.value = allPosts[filter] || [];
-  // Reset comment states when filter changes
   Object.keys(expandedComments).forEach(key => delete expandedComments[key]);
   Object.keys(newCommentText).forEach(key => delete newCommentText[key]);
-};
-
-const publishPost = () => {
-  if (!newPostContent.value.trim()) return;
-  // Simulate adding a new post (add to the beginning of the 'latest' list for demo)
-  const newPost = {
-    id: Date.now(), // Simple unique ID
-    author: '言起志', // Current user (example)
-    avatar: 'https://avatars.githubusercontent.com/u/1?v=4',
-    meta: '刚刚',
-    content: newPostContent.value,
-    likes: 0,
-    comments: []
-  };
-  // Add to the general pool if needed, and update current view if it's 'latest'
-  if (!allPosts['latest']) allPosts['latest'] = [];
-  allPosts['latest'].unshift(newPost);
-  if (activeFilter.value === 'latest') {
-    posts.value = allPosts['latest'];
+  if (filter === 'latest') {
+    fetchLatestPosts();
+  } else if (filter.startsWith('circle-')) {
+    // 选择圈子
+    const circleName = filter.replace('circle-', '');
+    const circle = circles.value.find(c => c.Name === circleName || c.name === circleName);
+    if (circle) {
+      selectedCircleId.value = circle.ID || circle.id;
+      fetchGroupPosts(selectedCircleId.value);
+    }
+  } else {
+    posts.value = [];
   }
-  newPostContent.value = ''; // Clear input
 };
 
+// 选择圈子（用于发帖）
+const handleSelectCircle = (circleId) => {
+  selectedCircleId.value = circleId;
+  fetchGroupPosts(circleId);
+};
+
+// 发布帖子
+const publishPost = async () => {
+  if (!newPostContent.value.trim() || !selectedCircleId.value) return;
+  try {
+    const res = await fetch(`/groups/${selectedCircleId.value}/posts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: newPostContent.value, images: [] })
+    });
+    const data = await res.json();
+    if (data.post) {
+      posts.value.unshift(data.post);
+      newPostContent.value = '';
+    }
+  } catch (e) {}
+};
+
+// 展开/收起评论
 const toggleComments = (postId) => {
   expandedComments[postId] = !expandedComments[postId];
   if (expandedComments[postId] && !newCommentText[postId]) {
-      newCommentText[postId] = ''; // Initialize comment input when expanded
+    newCommentText[postId] = '';
   }
 };
 
-const addComment = (postId) => {
+// 添加评论
+const addComment = async (postId) => {
   const text = newCommentText[postId]?.trim();
   if (!text) return;
-
-  const postIndex = posts.value.findIndex(p => p.id === postId);
-  if (postIndex !== -1) {
-    const newComment = {
-      id: Date.now(), // Simple unique ID
-      author: '言起志', // Current user (example)
-      text: text
-    };
-    posts.value[postIndex].comments.push(newComment);
-
-    // Also update the comment in the main allPosts data if necessary
-    // This part depends on how you manage the source data
-    const filterKey = activeFilter.value;
-    const originalPostIndex = allPosts[filterKey]?.findIndex(p => p.id === postId);
-    if (originalPostIndex !== -1) {
-        allPosts[filterKey][originalPostIndex].comments.push(newComment);
+  try {
+    const res = await fetch(`/posts/${postId}/comments`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text })
+    });
+    const data = await res.json();
+    if (data.comment) {
+      const post = posts.value.find(p => p.ID === postId || p.id === postId);
+      if (post) {
+        if (!post.comments) post.comments = [];
+        post.comments.push(data.comment);
+      }
+      newCommentText[postId] = '';
     }
-
-    newCommentText[postId] = ''; // Clear input
-  }
+  } catch (e) {}
 };
 
+// 点赞帖子
+const likePost = async (postId) => {
+  try {
+    const res = await fetch(`/posts/${postId}/like`, { method: 'POST' });
+    const data = await res.json();
+    if (data.success) {
+      const post = posts.value.find(p => p.ID === postId || p.id === postId);
+      if (post) post.likes = (post.likes || 0) + 1;
+    }
+  } catch (e) {}
+};
+
+onMounted(() => {
+  fetchCircles();
+  fetchLatestPosts();
+});
 </script>
 
 <style scoped>

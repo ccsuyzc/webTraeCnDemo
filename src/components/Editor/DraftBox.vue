@@ -1,18 +1,18 @@
 <template>
   <div class="draft-box-container">
-    <h3 class="draft-title">草稿箱</h3>
+    <h3 class="draft-title"><span>草稿箱</span><el-button type="primary" @click="refreshDrafts">加载线上</el-button></h3>
     <!-- <el-scrollbar height="calc(100% - 48px)"> --> <!-- Approx title height + margin -->
     <!-- Remove height and custom class, let flexbox handle sizing -->
     <el-scrollbar>
       <div v-if="drafts.length === 0" class="empty-drafts">
         暂无草稿
       </div>
-      <el-card v-for="draft in drafts" :key="draft.id" class="draft-card" shadow="hover">
+      <el-card v-for="draft in drafts" :key="draft.ID" class="draft-card" shadow="hover">
         <div class="draft-item">
-          <span class="draft-item-title">{{ draft.title }}</span>
+          <span class="draft-item-title">{{ draft.Title }}</span>
           <div class="draft-actions">
-            <el-button type="primary" link size="small" @click="loadDraft(draft.id)">加载</el-button>
-            <el-button type="danger" link size="small" @click="deleteDraft(draft.id)">删除</el-button>
+            <el-button type="primary" link size="small" @click="loadDraft(draft.ID)">加载</el-button>
+            <el-button type="danger" link size="small" @click="deleteDraft(draft.ID)">删除</el-button>
           </div>
         </div>
       </el-card>
@@ -72,11 +72,15 @@ const loadDrafts = async () => {
 };
 
 onMounted(async () => {
-  await loadDrafts(); // Call the extracted function
+  // 如果浏览器已经有草稿，则不加载草稿
+//  let i = localStorage.getItem('localDrafts')
+//   if (!i) {
+    await loadDrafts(); // Call the extracted function
+  // }
 });
 
 const loadDraft = async (id) => { // Make async
-    console.log(`Loading draft with ID: ${id}`);
+    console.log(`获取改用户的草稿，该用户ID: ${id}`);
   try {
     let draftToLoad = drafts.value.find(d => d.id === id || d.ID === id); // Check both local 'id' and potential backend 'ID'
 
@@ -114,6 +118,7 @@ const loadDraft = async (id) => { // Make async
   }
 };
 
+
 const deleteDraft = async (id) => { // Make async for potential backend call
     console.log(`Deleting draft with ID: ${id}`);
   const draftToDelete = drafts.value.find(d => d.id === id || d.ID === id);
@@ -121,7 +126,7 @@ const deleteDraft = async (id) => { // Make async for potential backend call
   if (!draftToDelete) return;
 
   // 1. Remove from local ref first for immediate UI update
-  drafts.value = drafts.value.filter(draft => (draft.id || draft.ID) !== id);
+  drafts.value = drafts.value.filter(draft => (draft.ID || draft.ID) !== id);
 
   // 2. Remove from local storage if it was a local draft
   if (draftToDelete.isLocal || String(id).startsWith('local_')) {
@@ -183,6 +188,9 @@ defineExpose({
 }
 
 .draft-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin: 0 0 16px 0; /* Keep margin */
   /* Padding is handled by container */
   font-size: 1.1em;

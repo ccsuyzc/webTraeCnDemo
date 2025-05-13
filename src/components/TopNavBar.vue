@@ -18,7 +18,7 @@
       <div class="search-container">
         <input 
           class="search-input" 
-          placeholder="探索掘土掘金" 
+          placeholder="探索Go博客平台" 
           v-model="searchQuery"
           @focus="showHistoryDropdown"
           @blur="hideHistoryDropdown"

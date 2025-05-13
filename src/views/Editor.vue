@@ -88,7 +88,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue'; // Add computed
+import { ref, onMounted, computed, provide } from 'vue'; // Add computed
 import { useRoute, useRouter } from 'vue-router';
 // Re-add necessary Element Plus components and the icon
 import { ElDialog, ElForm, ElFormItem, ElInput, ElButton, ElSelect, ElOption, ElUpload, ElIcon, ElMessage, ElMessageBox } from 'element-plus';
@@ -98,7 +98,7 @@ import '@kangc/v-md-editor/lib/style/base-editor.css';
 import githubTheme from '@kangc/v-md-editor/lib/theme/github.js';
 import '@kangc/v-md-editor/lib/theme/style/github.css';
 import hljs from 'highlight.js';
-import { fetchArticleDetailById, createArticle, updateArticle, fetchTags, fetchCategories } from '@/api/articles'; // 引入API
+import { fetchArticleDetailById, createArticle, updateArticle, fetchTags, fetchCategories,fetchArticleToModify } from '@/api/articles'; // 引入API
 import { BASE_URL } from '@/api/config'; // 引入基础 URL
 import axios from 'axios'; // 引入 axios 用于上传图片
 // Re-import sidebar components
@@ -114,6 +114,7 @@ const isEditing = ref(false);
 const articleId = ref(null);
 const title = ref('');
 const content = ref('');
+provide('editorContent', content);
 
 const isEditingDraft = ref(false); // Tracks if editing a draft
 const currentDraftId = ref(null); // ID of the draft being edited
@@ -131,18 +132,19 @@ const publishForm = ref({ // Keep as ref
 });
 
 onMounted(async () => {
+  // 如果是从编辑页面进入，则加载文章详情
   if (route.params.id) {
     isEditing.value = true;
     articleId.value = route.params.id;
     try {
       // Fetch actual article data
-      const articleData = await fetchArticleDetailById(articleId.value);
-      title.value = articleData.title;
-      content.value = articleData.content;
+      const articleData = await fetchArticleToModify(articleId.value);
+      title.value = articleData.Title;
+      content.value = articleData.Content;
       // Assuming API returns these fields directly in the detail endpoint
-      publishForm.value.coverImageUrl = articleData.coverImageUrl || ''; 
+      publishForm.value.coverImageUrl = articleData.Cover || ''; 
       publishForm.value.tags = articleData.tags || []; // Expecting array of strings
-      publishForm.value.category = articleData.category || ''; // Expecting string
+      publishForm.value.category = articleData.CategoryID || ''; // Expecting string
     } catch (error) {
         ElMessage.error('获取文章详情失败');
         console.error(`Failed to fetch article ${articleId.value}:`, error);
@@ -169,6 +171,7 @@ onMounted(async () => {
 // --- Cover Image Upload Logic ---
 const uploadActionUrl = computed(() => `${BASE_URL}/upload-image`);
 
+// 上传封面
 const handleCoverSuccess = (response, uploadFile) => {
   console.log('Upload success response:', response);
   if (response && response.url) {
@@ -366,16 +369,16 @@ const saveDraft = async () => {
 
 // Function to load draft content into the editor
 const loadDraftContent = (draft) => {
-  title.value = draft.title;
-  content.value = draft.content;
-  publishForm.value.coverImageUrl = draft.coverImageUrl || '';
+  title.value = draft.Title;
+  content.value = draft.Content;
+  publishForm.value.coverImageUrl = draft.Cover || '';
   publishForm.value.tags = draft.tags || [];
-  publishForm.value.category = draft.category || '';
+  publishForm.value.category = draft.CategoryID || '';
 
   // If the draft corresponds to an existing article being edited, keep the articleId
-  if (draft.articleId) {
+  if (draft.ID) {
     isEditing.value = true;
-    articleId.value = draft.articleId;
+    articleId.value = draft.ID;
     isEditingDraft.value = false; // Loading an article's draft, not a standalone draft
     currentDraftId.value = null;
   } else {
@@ -383,7 +386,7 @@ const loadDraftContent = (draft) => {
     isEditing.value = false;
     articleId.value = null;
     isEditingDraft.value = true; // Set draft editing state to true
-    currentDraftId.value = draft.id; // Store the draft's ID
+    currentDraftId.value = draft.ID; // Store the draft's ID
   }
   ElMessage.info('草稿内容已加载');
 };
@@ -392,19 +395,46 @@ const cancelEdit = () => {
   router.push('/creator'); // Navigate back to Creator Center
 };
 
-const handleUploadImage = (event, insertImage, files)=> {
-      // 拿到 files 之后上传到文件服务器，然后向编辑框中插入对应的内容
-      console.log(files);
-
-      // 此处只做示例
+const handleUploadImage = async (event, insertImage, files) => {
+  if (!files || files.length === 0) {
+    ElMessage.error('请选择要上传的图片');
+    return;
+  }
+  const file = files[0];
+  // 校验图片类型和大小
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif'];
+  const maxSize = 5 * 1024 * 1024;
+  if (!allowedTypes.includes(file.type)) {
+    ElMessage.error('图片仅支持 JPG/PNG/GIF 格式!');
+    return;
+  }
+  if (file.size > maxSize) {
+    ElMessage.error('图片大小不能超过 5MB!');
+    return;
+  }
+  const formData = new FormData();
+  formData.append('image', file);
+  try {
+    const res = await axios.post('http://127.0.0.1:8080/api/upload-image', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    });
+    if (res.data && res.data.url) {
       insertImage({
-        url:
-          'https://ss0.bdstatic.com/70cFvHSh_Q1YnxGkpoWK1HF6hhy/it/u=1269952892,3525182336&fm=26&gp=0.jpg',
-        desc: '七龙珠',
-        // width: 'auto',
-        // height: 'auto',
+        url: res.data.url.startsWith('/') ? BASE_URL + res.data.url : res.data.url,
+        desc: file.name
       });
+      ElMessage.success('图片上传成功');
+    } else {
+      ElMessage.error('图片上传成功，但未返回图片地址');
     }
+  } catch (error) {
+    let msg = '图片上传失败';
+    if (error.response && error.response.data && error.response.data.error) {
+      msg = error.response.data.error;
+    }
+    ElMessage.error(msg);
+  }
+}
 </script>
 
 <style scoped>

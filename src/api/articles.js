@@ -6,6 +6,30 @@ import { BASE_URL } from './config'; // 引入基础 URL
 // const API_BASE_URL = '/api'; // 或者 http://localhost:3000/api 等
 
 /**
+ * 获取待修改的文章
+ * @param {string} userId - 用户 ID
+ * @returns {Promise<Object>} - 待修改的文章对象
+ */
+export const fetchArticleToModify = async (userId) => {
+  try {
+    console.log(`Fetching article detail for ID: ${userId}`);
+    const response = await axios.get(`${BASE_URL}/articles/${userId}`);
+    // 假设后端返回的数据结构是 { code: 0, data: { ...article data... } } 或直接是文章对象
+    // 需要根据实际后端返回调整
+    if (response.data.data ) {
+      return response.data.data; // 如果有 code 和 data 结构
+    } else if (response.data) {
+      return response.data; // 如果直接返回文章对象
+    } else {
+      throw new Error('Invalid response structure from API');
+    }
+  } catch (error) {
+    console.error(`Error fetching article detail for ID ${id}:`, error);
+    // 可以抛出错误或返回 null/特定错误对象，以便调用者处理
+    throw error; // 重新抛出错误，让调用组件处理
+  }
+}
+/**
  * 根据标签获取文章列表
  * @param {string} tag - 文章标签
  * @returns {Promise<Array>} - 文章列表
@@ -73,7 +97,7 @@ export const fetchArticleDetailById = async (id) => {
     const response = await axios.get(`${BASE_URL}/articles/${id}`);
     // 假设后端返回的数据结构是 { code: 0, data: { ...article data... } } 或直接是文章对象
     // 需要根据实际后端返回调整
-    if (response.data && response.data.code === 0) {
+    if (response.data.data ) {
       return response.data.data; // 如果有 code 和 data 结构
     } else if (response.data) {
       return response.data; // 如果直接返回文章对象
@@ -232,7 +256,7 @@ export const fetchDraftDetail = async (userId, draftId) => {
   try {
     const response = await axios.get(`${BASE_URL}/articles/draft/${userId}/${draftId}`);
     // 假设后端直接返回草稿对象
-    return response.data; 
+    return response.data.data;  
   } catch (error) {
     console.error(`Error fetching draft detail for user ${userId}, draft ${draftId}:`, error);
     ElMessage.error('获取草稿详情失败');

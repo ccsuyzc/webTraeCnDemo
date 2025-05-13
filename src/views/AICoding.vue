@@ -100,8 +100,7 @@ import { ref, nextTick, onMounted, watch } from 'vue';
 import { ElMessage, ElScrollbar, ElInput, ElButton, ElContainer, ElAside, ElMain, ElHeader, ElFooter, ElAvatar, ElSwitch } from 'element-plus'; // 引入需要的 Element Plus 组件
 import { Delete } from '@element-plus/icons-vue'; // 引入删除图标
 import { getAIChatResponse, getAvailableModels } from '@/api/ai'; // 引入 AI API 函数
-// 引入 Element Plus 组件 for select
-import { ElSelect, ElOption } from 'element-plus';
+
 // 引入 v-md-preview
 import VMdPreview from '@kangc/v-md-editor/lib/preview';
 import '@kangc/v-md-editor/lib/style/preview.css';
@@ -138,7 +137,7 @@ const activeHistory = ref(0);
 const chat = ref([]); // 当前对话的聊天记录，初始为空
 const input = ref('');
 const isStreaming = ref(false); // 新增：控制是否流式传输
-const availableModels = ref([]);
+const availableModels = ref(["deepseek-chat"]);
 const selectedModel = ref(null);
 const chatContentRef = ref(null); // Ref for chat content inner div
 const chatScrollbarRef = ref(null); // Ref for el-scrollbar component
@@ -173,7 +172,7 @@ onMounted(() => {
     newConversation();
   }
   // 获取可用模型列表
-  fetchAvailableModels();
+  // fetchAvailableModels();
   scrollToBottom(); // 初始加载后滚动到底部
 });
 
@@ -182,9 +181,9 @@ async function fetchAvailableModels() {
   try {
     const models = await getAvailableModels();
     availableModels.value = models;
-    if (models.length > 0) {
-      selectedModel.value = models[0]; // 默认选中第一个模型
-    }
+    // if (models.length > 0) {
+    //   selectedModel.value = models[0]; // 默认选中第一个模型
+    // }
   } catch (error) {
     console.error('获取模型列表失败:', error);
     ElMessage.error('获取模型列表失败，请检查网络或联系管理员。');

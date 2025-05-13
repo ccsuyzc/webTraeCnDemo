@@ -5,8 +5,7 @@
       <el-card class="action-card">
         <!-- Add v-if condition here -->
         <el-button v-if="currentUserId && article.authorId === currentUserId" type="primary" class="action-btn edit-btn" @click="editArticle">编辑</el-button>
-        <!-- Replace existing collection button with FavoriteButton component -->
-        <FavoriteButton  :articleId="route.params.id" class="action-btn" />
+        <el-button class="action-btn" @click="Collection" >收藏</el-button>
         <!-- Share Button with Dropdown -->
         <el-dropdown @command="handleShareCommand" class="action-btn le share-dropdown">
           <el-button class="action-btn share-btn-inner">
@@ -34,7 +33,7 @@
           <span class="meta-divider">|</span>
           <span>阅读 {{ article.views }}</span>
         </div>
-        <v-md-preview ref="articleBodyRef" :text="article.content" class="article-body"></v-md-preview>
+        <div ref="articleBodyRef" class="article-body" v-html="article.content"></div>
       </el-card>
 
       <!-- 评论区 -->
@@ -92,9 +91,9 @@
     <div class="right-bar">
       <el-card class="author-card">
         <div class="author-avatar" @click="goToUserProfile">
-          <el-avatar :size="56" :src="article.authorAvatar" />
+          <el-avatar :size="56" :src="article.User.AvatarURL" />
         </div>
-        <div class="author-name" @click="goToUserProfile">{{ article.author }}</div>
+        <div class="author-name" @click="goToUserProfile">{{ article.User.PersonalIntroduction }}</div>
         <div class="author-desc">{{ article.authorDesc }}</div>
         <el-button size="small" type="primary" class="follow-btn">关注</el-button>
       </el-card>
@@ -179,18 +178,6 @@
         </span>
       </template>
     </el-dialog>
-
-    <!-- 回到顶部按钮 -->
-    <el-button
-      v-if="showBackToTop"
-      class="back-to-top-btn"
-      type="primary"
-      circle
-      @click="scrollToTop"
-      style="position: fixed; right: 40px; bottom: 60px; z-index: 999;"
-    >
-      <el-icon><arrow-up /></el-icon>
-    </el-button>
   </div>
 
   <!-- QR Code Dialog -->
@@ -210,13 +197,12 @@
 </template>
 
 <script setup>
-import FavoriteButton from '@/components/FavoriteButton.vue'; // Import FavoriteButton component
 import dayjs from 'dayjs';
 import { ref, onMounted, onBeforeUnmount, computed, nextTick } from 'vue'; // Add computed, nextTick, onBeforeUnmount
 import { useRoute, useRouter } from 'vue-router'; // Import useRouter
 // 导入 Element Plus 组件
 import { ElDropdown, ElDropdownMenu, ElDropdownItem, ElDialog, ElMessage, ElIcon, ElButton, ElInput, ElScrollbar, ElAvatar } from 'element-plus'; // Import necessary components
-import { ArrowDown, ArrowUp } from '@element-plus/icons-vue'; // Import icon
+import { ArrowDown } from '@element-plus/icons-vue'; // Import icon
 import QrcodeVue from 'qrcode.vue'; // Import QR Code component
 import html2canvas from 'html2canvas'; // Import html2canvas
 import { fetchArticleDetailById, fetchArticleComments, postComment, recordReadingHistory } from '../api/articles'; // 导入 API 函数, recordReadingHistory
@@ -246,7 +232,7 @@ const authStore = useAuthStore(); // Initialize auth store
 
 // 从 authStore 获取用户信息
 const currentUserId = ref(authStore.user.ID || null);
-const currentUserAvatar = ref(authStore.user.AvatarURL || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'); // 使用 store 中的头像或默认
+const currentUserAvatar = ref(authStore.user.avatar || 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png'); // 使用 store 中的头像或默认
 const currentUsername = ref(authStore.user.Username || '访客'); // 使用 store 中的用户名或默认
 
 // 阅读记录相关状态
@@ -295,8 +281,6 @@ const aiChatInput = ref('');
 const aiChatScrollbarRef = ref(null);
 const aiChatMessagesRef = ref(null);
 const currentSelectionRange = ref(null); // Store selection range
-
-const isStreaming = ref(true); // 用于标识是否正在流式响应
 
 // Function to initiate replying to a comment
 const startReply = (comment) => {
@@ -587,17 +571,17 @@ onMounted(async () => {
       
       // Assume fetchedArticle now includes authorId and the article id
       article.value.id = articleId; // Store article ID
-      article.value.content = fetchedArticle.Content;
-      article.value.title = fetchedArticle.Title;
-      article.value.author = fetchedArticle.User.Username;
-      article.value.authorId = fetchedArticle.UserID;
-      article.value.date = dayjs(fetchedArticle.CreatedAt).format('YYYY-MM-DD HH:mm:ss');
-      article.value.views = fetchedArticle.ViewCount;
-      article.value.authorAvatar = fetchedArticle.User.AvatarURL;
-      article.value.authorDesc = fetchedArticle.User.PersonalIntroduction;
-      article.value.tags = fetchedArticle.Tags;
+      article.value.content = fetchedArticle.data.Content;
+      article.value.title = fetchedArticle.data.Title;
+      article.value.author = fetchedArticle.data.UserName;
+      article.value.authorId = fetchedArticle.data.UserID;
+      article.value.date = dayjs(fetchedArticle.data.CreatedAt).format('YYYY-MM-DD HH:mm:ss');
+      article.value.views = fetchedArticle.data.ViewCount;
+      article.value.authorAvatar = fetchedArticle.data.AvatarURL;
+      article.value.authorDesc = fetchedArticle.data.UserDesc;
+      article.value.tags = fetchedArticle.data.Tags;
       // article.value.comments = fetchedArticle.data.Comments;
-      article.value.likes = fetchedArticle.LikeCount
+      article.value.likes = fetchedArticle.data.LikeCount
       // 获取评论
       await fetchComments(articleId);
 
@@ -633,56 +617,14 @@ onMounted(async () => {
 
   // Add mouseup listener after component mounts and article content is potentially loaded
   nextTick(() => {
-    if (articleBodyRef.value && articleBodyRef.value.$el) {
-      articleBodyRef.value.$el.addEventListener('mouseup', handleTextSelection);
+    if (articleBodyRef.value) {
+      articleBodyRef.value.addEventListener('mouseup', handleTextSelection);
       // Add listener to hide button when clicking elsewhere
       document.addEventListener('mousedown', handleMouseDownOutside);
     } else {
       console.warn('articleBodyRef is not available to attach listener.');
     }
   });
-  await nextTick();
-  // 重新绑定 markdown 预览区的右键和选区监听
-  const mdPreviewEl = articleBodyRef.value && articleBodyRef.value.$el ? articleBodyRef.value.$el : (articleBodyRef.value || null);
-  if (mdPreviewEl) {
-    // 右键菜单事件
-    mdPreviewEl.addEventListener('contextmenu', (e) => {
-      // 这里可以根据你的 AI 解释逻辑弹出菜单或触发事件
-      selectedText.value = window.getSelection().toString();
-      if (selectedText.value) {
-        aiButtonVisible.value = true;
-        aiButtonStyle.value = {
-          position: 'fixed',
-          left: `${e.clientX + 10}px`,
-          top: `${e.clientY + 10}px`,
-          zIndex: 9999
-        };
-      } else {
-        aiButtonVisible.value = false;
-      }
-      // 阻止默认右键菜单
-      e.preventDefault();
-    });
-    // 鼠标松开时检测选区
-    mdPreviewEl.addEventListener('mouseup', (e) => {
-      selectedText.value = window.getSelection().toString();
-      if (selectedText.value) {
-        aiButtonVisible.value = true;
-        aiButtonStyle.value = {
-          position: 'fixed',
-          left: `${e.clientX + 10}px`,
-          top: `${e.clientY + 10}px`,
-          zIndex: 9999
-        };
-      } else {
-        aiButtonVisible.value = false;
-      }
-    });
-    // 选区开始时隐藏 AI 按钮
-    mdPreviewEl.addEventListener('selectstart', () => {
-      aiButtonVisible.value = false;
-    });
-  }
 });
 
 // Clean up listener on unmount
@@ -776,79 +718,52 @@ const sendAiQuery = async (isInitialQuery = false) => {
 
   if (!isInitialQuery) {
     aiChatMessages.value.push({ role: 'user', text: textToSend });
-    aiChatInput.value = '';
+    aiChatInput.value = ''; // Clear input after sending
   }
 
   scrollAiChatToBottom();
 
-  let aiMessageIndex = -1;
-  if (isStreaming.value) {
-    const aiMessage = { role: 'ai', text: '' };
-    aiChatMessages.value.push(aiMessage);
-    aiMessageIndex = aiChatMessages.value.length - 1;
-    scrollAiChatToBottom();
-  } else {
-    aiChatMessages.value.push({ role: 'ai', text: '思考中...' });
-    scrollAiChatToBottom();
-  }
+  // Add loading indicator if desired
+  aiChatMessages.value.push({ role: 'ai', text: '思考中...' });
+  scrollAiChatToBottom();
 
   try {
+    // Prepare messages for API (use current chat context)
     const apiMessages = aiChatMessages.value
-      .filter(msg => msg.text !== '思考中...')
+      .filter(msg => msg.text !== '思考中...') // Exclude loading message
       .map(msg => ({ role: msg.role === 'ai' ? 'assistant' : 'user', content: msg.text }));
+
+    // Retrieve user token from local storage if needed by API
     const userToken = localStorage.getItem('deepseek_api_token');
-    if (isStreaming.value) {
-      // 流式处理
-      const stream = await getAIChatResponse(apiMessages, userToken, true);
-      const reader = stream.getReader();
-      const decoder = new TextDecoder();
-      let accumulatedResponse = '';
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n').filter(line => line.startsWith('data: '));
-        for (const line of lines) {
-          const jsonData = line.substring('data: '.length);
-          if (jsonData.trim() === '[DONE]') break;
-          try {
-            const parsed = JSON.parse(jsonData);
-            if (parsed.choices && parsed.choices[0] && parsed.choices[0].delta && parsed.choices[0].delta.content) {
-              const contentPiece = parsed.choices[0].delta.content;
-              aiChatMessages.value[aiMessageIndex].text += contentPiece;
-              accumulatedResponse += contentPiece;
-              scrollAiChatToBottom();
-            }
-          } catch (e) {
-            console.error('Error parsing stream chunk:', e, jsonData);
-          }
-        }
-      }
-      if (isInitialQuery) {
-        saveConversationToHistory(selectedText.value, accumulatedResponse);
-      }
+
+    const response = await getAIChatResponse(apiMessages, userToken);
+
+    // Replace 'Thinking...' with actual response
+    const lastMessageIndex = aiChatMessages.value.length - 1;
+    if (aiChatMessages.value[lastMessageIndex]?.role === 'ai' && aiChatMessages.value[lastMessageIndex]?.text === '思考中...') {
+      aiChatMessages.value[lastMessageIndex].text = response;
     } else {
-      // 非流式处理
-      aiChatMessages.value.pop();
-      const response = await getAIChatResponse(apiMessages, userToken, false);
+      // Fallback if 'Thinking...' wasn't the last message (shouldn't happen often)
       aiChatMessages.value.push({ role: 'ai', text: response });
-      if (isInitialQuery) {
+    }
+
+    // Save conversation to history after getting response
+    if (isInitialQuery) {
         saveConversationToHistory(selectedText.value, response);
-      }
     }
+
   } catch (error) {
-    if (aiMessageIndex !== -1 && aiChatMessages.value[aiMessageIndex] && aiChatMessages.value[aiMessageIndex].text === '') {
-      aiChatMessages.value[aiMessageIndex].text = `抱歉，AI 回复时遇到了问题: ${error.message || '未知错误'}`;
-    } else if (!isStreaming.value && aiChatMessages.value[aiChatMessages.value.length -1].text === '思考中...'){
-      aiChatMessages.value.pop();
-      aiChatMessages.value.push({ role: 'ai', text: `抱歉，AI 回复时遇到了问题: ${error.message || '未知错误'}` });
-    } else if (isStreaming.value && aiMessageIndex !== -1) {
-      aiChatMessages.value[aiMessageIndex].text += `\n(回复中断: ${error.message || '未知错误'})`;
-    } else {
-      aiChatMessages.value.push({ role: 'ai', text: `抱歉，AI 回复时遇到了问题: ${error.message || '未知错误'}` });
-    }
+    console.error('AI chat error:', error);
+    const lastMessageIndex = aiChatMessages.value.length - 1;
+     if (aiChatMessages.value[lastMessageIndex]?.role === 'ai' && aiChatMessages.value[lastMessageIndex]?.text === '思考中...') {
+        aiChatMessages.value[lastMessageIndex].text = `抱歉，解释时遇到错误: ${error.message || '请稍后再试'}`;
+     } else {
+        aiChatMessages.value.push({ role: 'ai', text: `抱歉，解释时遇到错误: ${error.message || '请稍后再试'}` });
+     }
+    // ElMessage.error('AI 解释失败');
+  } finally {
+    scrollAiChatToBottom();
   }
-  scrollAiChatToBottom();
 };
 
 // Reset AI Chat state when dialog closes

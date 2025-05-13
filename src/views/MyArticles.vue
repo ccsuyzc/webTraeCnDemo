@@ -2,23 +2,74 @@
   <div class="my-articles-page">
     <el-card class="articles-card">
       <h2>我的文章</h2>
-      <el-table :data="articles" style="width: 100%">
-        <el-table-column prop="title" label="标题" width="200" />
-        <el-table-column prop="status" label="状态" width="100">
-          <template #default="scope">
-            <el-tag :type="getStatusType(scope.row.status)">{{ scope.row.status }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="description" label="描述" width="250" show-overflow-tooltip />
-        <el-table-column prop="createdAt" label="创建时间" width="180" />
-        <el-table-column prop="ip" label="IP地址" width="150" />
-        <el-table-column label="操作" width="150" fixed="right">
-          <template #default="scope">
-            <el-button size="small" @click="editArticle(scope.row)">修改</el-button>
-            <el-button size="small" type="danger" @click="deleteArticle(scope.row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <el-tabs v-model="activeTabName" @tab-click="handleClick">
+        <el-tab-pane label="已发布" name="published">
+          <el-table :data="publishedArticles" style="width: 100%">
+            <el-table-column prop="Title" label="标题" width="200" />
+            <el-table-column prop="Status" label="状态" width="100">
+              <template #default="scope">
+                <el-tag :type="getStatusType(scope.row.Status)">{{ scope.row.Status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="Description" label="描述" width="250" show-overflow-tooltip />
+            <el-table-column prop="PublishTime" label="发布时间" width="180">
+              <template #default="scope">
+                {{ formatDateTime(scope.row.PublishTime) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right">
+              <template #default="scope">
+                <el-button size="small" @click="editArticle(scope.row)">修改</el-button>
+                <el-button size="small" type="danger" @click="deleteArticle(scope.row, 'published')">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="审核中" name="pending_review">
+          <el-table :data="pendingReviewArticles" style="width: 100%">
+            <el-table-column prop="Title" label="标题" width="200" />
+            <el-table-column prop="Status" label="状态" width="100">
+              <template #default="scope">
+                <el-tag :type="getStatusType(scope.row.Status)">{{ scope.row.Status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="Description" label="描述" width="250" show-overflow-tooltip />
+            <el-table-column prop="SubmitTime" label="提交时间" width="180">
+              <template #default="scope">
+                {{ formatDateTime(scope.row.SubmitTime) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right">
+              <template #default="scope">
+                <el-button size="small" @click="editArticle(scope.row)">修改</el-button>
+                <el-button size="small" type="danger" @click="deleteArticle(scope.row, 'pending_review')">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane label="被驳回" name="rejected">
+          <el-table :data="rejectedArticles" style="width: 100%">
+            <el-table-column prop="Title" label="标题" width="200" />
+            <el-table-column prop="Status" label="状态" width="100">
+              <template #default="scope">
+                <el-tag :type="getStatusType(scope.row.Status)">{{ scope.row.Status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="RejectReason" label="驳回理由" width="250" show-overflow-tooltip />
+            <el-table-column prop="AuditTime" label="审核时间" width="180">
+              <template #default="scope">
+                {{ formatDateTime(scope.row.AuditTime) }}
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right">
+              <template #default="scope">
+                <el-button size="small" @click="editArticle(scope.row)">修改</el-button>
+                <el-button size="small" type="danger" @click="deleteArticle(scope.row, 'rejected')">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
     </el-card>
   </div>
 </template>
@@ -26,67 +77,116 @@
 <script setup>
 import { ref, onMounted } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-// 假设有api/articles.js用于请求文章数据
-// import { fetchArticlesByUser, deleteArticleById } from '@/api/articles'; // 引入API
+import { ElCard, ElTabs, ElTabPane, ElTable, ElTableColumn, ElTag, ElButton, ElMessage, ElMessageBox } from 'element-plus';
+import { fetchUserArticlesByStatus } from '@/api/mya'; // 引入新的API函数
+import { useAuthStore } from '@/store/authStore'; // 引入Auth Store
+import dayjs from 'dayjs'; // 引入 dayjs 用于日期格式化
 
 const route = useRoute();
 const router = useRouter();
-const userId = route.params.userId;
-const articles = ref([]);
+const authStore = useAuthStore();
+
+const publishedArticles = ref([]);
+const pendingReviewArticles = ref([]);
+const rejectedArticles = ref([]);
+const activeTabName = ref('published');
+const isLoading = ref(true);
+
+// 假设用户ID从AuthStore获取，如果MyArticles是当前登录用户的文章列表
+// 如果是从路由参数获取，则使用 route.params.userId
+const userId = ref(authStore.user?.ID); // 使用可选链确保user存在
 
 onMounted(async () => {
-  // 这里应调用后端API获取文章列表
-  // try {
-  //   articles.value = await fetchArticlesByUser(userId);
-  // } catch (error) {
-  //   console.error('获取文章列表失败:', error);
-  //   // 可以添加用户提示，例如使用 Element Plus 的 Message 组件
-  // }
-  // 模拟数据
-  articles.value = [
-    { id: 1, title: '我的第一篇文章', status: '已发布', description: '这是我的第一篇博客文章，关于Vue 3的入门。', createdAt: '2024-05-01 10:00', ip: '192.168.1.1' },
-    { id: 2, title: '深入理解Pinia', status: '审核中', description: '详细介绍了Pinia状态管理库的核心概念和用法。', createdAt: '2024-05-15 14:30', ip: '10.0.0.5' },
-    { id: 3, title: 'Vue Router进阶', status: '已发布', description: '探讨Vue Router的动态路由、导航守卫等高级特性。', createdAt: '2024-06-01 09:20', ip: '172.16.0.10' },
-  ];
+  if (!userId.value) {
+    // 如果路由中有userId，则优先使用路由中的userId，例如查看他人文章列表的场景
+    if (route.params.userId) {
+        userId.value = route.params.userId;
+    } else {
+        ElMessage.error('用户ID未找到，无法加载文章列表');
+        isLoading.value = false;
+        return;
+    }
+  }
+  await loadArticles();
 });
 
+async function loadArticles() {
+  isLoading.value = true;
+  try {
+    const response = await fetchUserArticlesByStatus(userId.value);
+    if (response.data.success ) {
+      publishedArticles.value = response.data.data.published || [];
+      pendingReviewArticles.value = response.data.data.pending_review || [];
+      rejectedArticles.value = response.data.data.rejected || [];
+    } else {
+      ElMessage.error(response.message || '获取文章列表失败');
+    }
+  } catch (error) {
+    console.error('获取文章列表失败:', error);
+    ElMessage.error('获取文章列表失败，请检查网络或联系管理员');
+  } finally {
+    isLoading.value = false;
+  }
+}
+
 function getStatusType(status) {
-  if (status === '已发布') return 'success';
-  if (status === '审核中') return 'warning';
-  if (status === '草稿') return 'info';
+  if (status === 'published') return 'success';
+  if (status === 'pending' || status === 'pending_review') return 'warning'; // API返回的是pending_review，但通常状态可能是pending
+  if (status === 'rejected') return 'danger';
+  if (status === 'draft') return 'info';
   return '';
 }
 
-function editArticle(article) {
-  router.push({ path: `/editor/${article.id}` }); // 跳转到编辑器页面，并带上文章ID
-  console.log('编辑文章:', article);
+function formatDateTime(dateTimeStr) {
+  if (!dateTimeStr || dateTimeStr === '0001-01-01T00:00:00Z') return 'N/A';
+  return dayjs(dateTimeStr).format('YYYY-MM-DD HH:mm:ss');
 }
 
-async function deleteArticle(article) {
-  // 在实际应用中，这里会调用API删除文章
-  // try {
-  //   await deleteArticleById(article.id);
-  //   articles.value = articles.value.filter(a => a.id !== article.id); // 从列表中移除
-  //   // Element Plus 提示删除成功
-  //   ElMessage.success('文章删除成功');
-  // } catch (error) {
-  //   console.error('删除文章失败:', error);
-  //   // Element Plus 提示删除失败
-  //   ElMessage.error('文章删除失败');
-  // }
-  console.log('删除文章:', article);
-  // 模拟删除
-  articles.value = articles.value.filter(a => a.id !== article.id);
-  // 在实际项目中，你可能需要引入 ElMessage
-  // import { ElMessage } from 'element-plus';
-  // ElMessage.success(`删除了文章: ${article.title}`);
+function editArticle(article) {
+  router.push({ path: `/editor/${article.ID}` });
 }
+
+async function deleteArticle(article, type) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除文章《${article.Title}》吗？此操作不可撤销。`,
+      '警告',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+      }
+    );
+    // 在实际应用中，这里会调用API删除文章
+    // await deleteArticleById(article.ID); // 假设有这个API
+    ElMessage.success('文章删除成功（模拟）');
+    // 从对应列表中移除
+    if (type === 'published') {
+      publishedArticles.value = publishedArticles.value.filter(a => a.ID !== article.ID);
+    } else if (type === 'pending_review') {
+      pendingReviewArticles.value = pendingReviewArticles.value.filter(a => a.ID !== article.ID);
+    } else if (type === 'rejected') {
+      rejectedArticles.value = rejectedArticles.value.filter(a => a.ID !== article.ID);
+    }
+  } catch (error) {
+    if (error !== 'cancel') {
+      console.error('删除文章失败:', error);
+      ElMessage.error('文章删除失败（模拟）');
+    }
+  }
+}
+
+function handleClick(tab, event) {
+  // console.log(tab, event);
+  // 如果需要，可以在标签页切换时执行操作，例如重新加载数据
+}
+
 </script>
 
 <style scoped>
 .my-articles-page {
   padding: 32px;
-  max-width: 1200px; /* 增加了最大宽度以适应更多列 */
+  max-width: 1200px;
   margin: 64px auto 0;
 }
 .articles-card {
@@ -94,7 +194,6 @@ async function deleteArticle(article) {
   padding: 24px;
 }
 
-/* 可以添加更多自定义样式 */
 .el-table .el-button + .el-button {
   margin-left: 8px;
 }

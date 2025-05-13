@@ -13,7 +13,7 @@
             <el-list class="level-list">
               <el-list-item v-for="(level, index) in mainLevels" :key="level.key">
                 <div class="level-item">
-                  <span>{{ index + 1 }}. {{ level.name }}</span>
+                  <span>{{ index + 1 }}. {{ level.title }}</span>
                   <el-button type="primary" plain size="small" @click="startChallenge(level.key)">挑战</el-button>
                 </div>
               </el-list-item>
@@ -34,7 +34,7 @@
             <el-list class="level-list">
               <el-list-item v-for="level in customLevels" :key="level.key">
                 <div class="level-item">
-                  <span>{{ level.name }}</span>
+                  <span>{{ level.title }}</span>
                   <el-button type="success" plain size="small" @click="startChallenge(level.key)">挑战</el-button>
                 </div>
               </el-list-item>
