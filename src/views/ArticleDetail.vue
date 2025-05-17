@@ -298,7 +298,20 @@ const currentSelectionRange = ref(null); // Store selection range
 
 const isStreaming = ref(true); // 用于标识是否正在流式响应
 
-// Function to initiate replying to a comment
+// 回到顶部按钮显示状态
+const showBackToTop = ref(false);
+
+// 监听页面滚动，动态设置 showBackToTop
+const handleScroll = () => {
+  showBackToTop.value = window.scrollY > 300;
+};
+
+onMounted(() => {
+  window.addEventListener('scroll', handleScroll);
+});
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', handleScroll);
+});
 const startReply = (comment) => {
   replyingTo.value = comment.id;
   replyingToUsername.value = comment.author;
@@ -401,27 +414,7 @@ const downloadQRCode = () => {
   });
 };
 
-// Placeholder for backend QR code generation
-// const downloadQRCodeFromBackend = async () => {
-//   try {
-//     // Replace with your actual API call
-//     // const response = await fetch(`/api/qrcode?url=${encodeURIComponent(currentArticleUrl.value)}`);
-//     // if (!response.ok) throw new Error('Backend QR code generation failed');
-//     // const blob = await response.blob();
-//     // const url = window.URL.createObjectURL(blob);
-//     // const link = document.createElement('a');
-//     // link.href = url;
-//     // link.download = `article-${article.value.id}-backend.png`;
-//     // link.click();
-//     // window.URL.revokeObjectURL(url);
-//     ElMessage.info('后端二维码生成功能待实现');
-//   } catch (error) {
-//     console.error('Failed to download QR code from backend:', error);
-//     ElMessage.error('从后端下载二维码失败');
-//   }
-// };
 
-// --- End Share Functionality ---
 
 // 提交评论的处理函数 - 调用 API (Modified to handle replies)
 const submitComment = async () => {
@@ -467,34 +460,7 @@ const submitComment = async () => {
   }
 };
 
-// --- Share Functionality ---
 
-
-// Placeholder for backend QR code generation
-// const downloadQRCodeFromBackend = async () => {
-//   try {
-//     // Replace with your actual API call
-//     // const response = await fetch(`/api/qrcode?url=${encodeURIComponent(currentArticleUrl.value)}`);
-//     // if (!response.ok) throw new Error('Backend QR code generation failed');
-//     // const blob = await response.blob();
-//     // const url = window.URL.createObjectURL(blob);
-//     // const link = document.createElement('a');
-//     // link.href = url;
-//     // link.download = `article-${article.value.id}-backend.png`;
-//     // link.click();
-//     // window.URL.revokeObjectURL(url);
-//     ElMessage.info('后端二维码生成功能待实现');
-//   } catch (error) {
-//     console.error('Failed to download QR code from backend:', error);
-//     ElMessage.error('从后端下载二维码失败');
-//   }
-// };
-
-// --- End Share Functionality ---
-
-// Renamed the original submitComment to submitTopLevelComment if needed,
-// but modifying the existing one is cleaner if the API handles both.
-// If you need separate logic, create a new submitReply function.
 
 // Example separate submitReply function (alternative approach):
 const submitReply = async (parentComment) => {
@@ -528,29 +494,6 @@ const submitReply = async (parentComment) => {
     // Handle error display
   }
 };
-
-
-// Placeholder for backend QR code generation
-// const downloadQRCodeFromBackend = async () => {
-//   try {
-//     // Replace with your actual API call
-//     // const response = await fetch(`/api/qrcode?url=${encodeURIComponent(currentArticleUrl.value)}`);
-//     // if (!response.ok) throw new Error('Backend QR code generation failed');
-//     // const blob = await response.blob();
-//     // const url = window.URL.createObjectURL(blob);
-//     // const link = document.createElement('a');
-//     // link.href = url;
-//     // link.download = `article-${article.value.id}-backend.png`;
-//     // link.click();
-//     // window.URL.revokeObjectURL(url);
-//     ElMessage.info('后端二维码生成功能待实现');
-//   } catch (error) {
-//     console.error('Failed to download QR code from backend:', error);
-//     ElMessage.error('从后端下载二维码失败');
-//   }
-// };
-
-// --- End Share Functionality ---
 
 // --- 发送阅读历史 ---
 const sendReadingRecord = async () => {
@@ -593,7 +536,7 @@ onMounted(async () => {
       article.value.authorId = fetchedArticle.UserID;
       article.value.date = dayjs(fetchedArticle.CreatedAt).format('YYYY-MM-DD HH:mm:ss');
       article.value.views = fetchedArticle.ViewCount;
-      article.value.authorAvatar = fetchedArticle.User.AvatarURL;
+      article.value.authorAvatar = fetchedArticle.User.AvatarURL|| 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png';
       article.value.authorDesc = fetchedArticle.User.PersonalIntroduction;
       article.value.tags = fetchedArticle.Tags;
       // article.value.comments = fetchedArticle.data.Comments;

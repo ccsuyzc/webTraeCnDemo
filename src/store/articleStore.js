@@ -26,7 +26,7 @@ export const useArticleStore = defineStore('articles', {
           console.log(`Fetching recommended articles (count: ${count})`);
           data = await fetchRecommendedArticles(count);
         } else {
-          count = 2; // 获取 2 篇分类文章
+          count = 5; // 获取 25篇分类文章
           console.log(`Fetching articles for category ${tagOrId} (count: ${count})`);
           data = await fetchArticlesByCategory(tagOrId, count);
         }

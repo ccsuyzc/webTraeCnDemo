@@ -318,12 +318,18 @@ export const postComment = async (commentData) => {
  * @returns {Promise<Array>} - 文章列表
  */
 export const fetchRecommendedArticles = async (count) => {
+  // 如果用户没有登录，返回空数组，就请求原来的接口
+  if (!localStorage.getItem('userInfo')) {
+    return [];
+  }
+  let userId = JSON.parse(localStorage.getItem('userInfo')).ID;
   try {
-    const response = await axios.get(`${BASE_URL}/articles/rarticles/${count}`);
+    // const response = await axios.get(`${BASE_URL}/articles/rarticles/${count}`);  原来的
+    const response = await axios.get(`${BASE_URL}/articles/recommended_article/${userId}`);
     // console.log(response.data.data);
     return response.data.data; 
   } catch (error) {
-    console.error(`Error fetching recommended articles (count: ${count}):`, error);
+    console.error(`Error fetching recommended articles (count: ${userId}):`, error);
     return [];
   }
 };

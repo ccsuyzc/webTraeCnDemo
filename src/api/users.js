@@ -1,6 +1,18 @@
 import {BASE_URL} from './config';
 import axios from 'axios';
 
+
+// 根据用户ID获取用户收藏的文章列表
+export const fetchUserCollectionArticles = async (userId) => { 
+
+    const response = await axios.get(`${BASE_URL}/articles/collection/${userId}`);
+    console.log(`API Call articles: fetchUserCollectionArticles(${userId})`, response.data.data);
+    // 假设后端返回 { code: 0, data: [...] } 结构
+    if (response.data.success) {
+      return response.data.data || []; // 返回文章数组或空数组
+    }
+};
+
 // 根据用户ID获取用户详细信息
 export const fetchUserDetails = async (userId) => {
   
@@ -23,6 +35,8 @@ export const fetchUserArticles = async (userId) => {
     }
  
 };
+
+
 
 // 更新用户详细信息
 export const updateUserDetails = async (userId, userData) => {

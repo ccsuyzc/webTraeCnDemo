@@ -2,7 +2,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElCard, ElTabs, ElTabPane, ElButton, ElTag, ElMessage, ElMessageBox } from 'element-plus'; // 导入 ElMessageBox
-import { fetchUserDetails, fetchUserArticles, checkMutualFollow, followUserApi, unfollowUserApi } from '../api/users'; // 导入新的 API 函数
+import { fetchUserDetails, fetchUserArticles,fetchUserCollectionArticles, checkMutualFollow, followUserApi, unfollowUserApi } from '../api/users'; // 导入新的 API 函数
 import { useAuthStore } from '../store/authStore'; // 导入 Auth Store
 import dayjs from 'dayjs'; // 导入 dayjs 用于日期格式化
 
@@ -11,7 +11,8 @@ const router = useRouter();
 const authStore = useAuthStore();
 
 const user = ref(null); // 存储用户详细信息
-const articles = ref([]); // 存储用户文章列表
+const articles = ref([]); // 存储用户文章发布列表
+const collections = ref([]); // 存储用户收藏文章列表
 const activeTab = ref('article');
 const isLoading = ref(true);
 const error = ref(null);
@@ -55,10 +56,11 @@ onMounted(async () => {
   try {
     isLoading.value = true;
     error.value = null;
-    // 并行获取用户详情和文章列表
+    // 并行获取用户详情和文章发布收藏列表
     const fetchPromises = [
       fetchUserDetails(userId),
-      fetchUserArticles(userId)
+      fetchUserArticles(userId),
+      fetchUserCollectionArticles(userId)
     ];
 
     // 如果不是自己的主页，并且已登录，则检查关注状态
@@ -66,7 +68,7 @@ onMounted(async () => {
       fetchPromises.push(checkMutualFollow(currentUserId.value, viewedUserId.value));
     }
 
-    const [userDetailsResponse, userArticlesResponse, mutualFollowStatus] = await Promise.all(fetchPromises);
+    const [userDetailsResponse, userArticlesResponse,userCollectionArticles , mutualFollowStatus] = await Promise.all(fetchPromises);
 
     // 处理用户详情
     if (userDetailsResponse) {
@@ -85,6 +87,13 @@ onMounted(async () => {
       meta: `${dayjs(article.CreatedAt).format('YYYY-MM-DD')} · ${article.ViewCount || 0}阅读 · ${article.LikeCount || 0}赞`,
       desc: article.Description || '暂无描述'
     }));
+    // 处理文章收藏表
+    collections.value = userCollectionArticles.map(article => ({
+      id: article.ID,
+      title: article.Title,
+      meta: `${dayjs(article.CreatedAt).format('YYYY-MM-DD')} · ${article.ViewCount || 0}阅读 · ${article.LikeCount || 0}赞`,
+      desc: article.Description || '暂无描述'
+    }))
 
     // 处理关注状态 (仅当请求发送并返回时)
     if (mutualFollowStatus !== undefined) {
@@ -255,8 +264,18 @@ async function handleFollowAction() {
                 </el-card>
               </div>
             </el-tab-pane>
-            <el-tab-pane label="收藏" name="column">收藏文章 (待开发)</el-tab-pane>
-            <el-tab-pane label="沸点" name="hot">沸点内容 (待开发)</el-tab-pane>
+            <el-tab-pane label="收藏" name="column">
+              <div v-if="collections.length === 0" class="no-articles">该用户还没有发布文章</div>
+              <div v-else class="article-list">
+                <!-- 使用动态文章列表 -->
+                <el-card class="article-item" v-for="item in collections" :key="item.id" @click="goToArticle(item.id)" style="cursor: pointer;">
+                  <div class="article-title">{{ item.title }}</div>
+                  <div class="article-meta">{{ item.meta }}</div>
+                  <div class="article-desc">{{ item.desc }}</div>
+                </el-card>
+              </div>
+              </el-tab-pane>
+            <el-tab-pane label="圈子" name="hot">沸点内容 (待开发)</el-tab-pane>
           </el-tabs>
         </el-card>
       </div>
